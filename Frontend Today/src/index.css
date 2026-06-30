@@ -1,0 +1,87 @@
+:root {
+    --primary: #8ce043;
+    --primary-hover: #7bd032;
+    --secondary: #e5ffe0;
+    --background: #f4fff2;
+    --surface: #ffffff;
+    --text-main: #1b2e04;
+    --text-muted: #4a5d3a;
+    --border: #d4e7cb;
+    --success: #8ce043;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --accent-light: #e5ffe0;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+    --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-family);
+    background-color: var(--background);
+    color: var(--text-main);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-family: inherit;
+}
+
+input,
+select,
+textarea {
+    font-family: inherit;
+    outline: none;
+}
+
+.text-primary {
+    color: var(--primary);
+}
+
+.text-success {
+    color: var(--success) !important;
+}
+
+.text-muted {
+    color: var(--text-muted);
+}
+
+.bg-white {
+    background-color: var(--surface);
+}
+
+.shadow {
+    box-shadow: var(--shadow);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d7e1cb;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a5b894;
+}

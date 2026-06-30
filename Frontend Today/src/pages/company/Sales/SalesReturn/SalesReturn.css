@@ -1,0 +1,1140 @@
+/* ... (Existing styles remain, appending new ones) ... */
+.SalesReturn-sales-return-page {
+    padding: 2rem;
+    background-color: #f8fafc;
+    min-height: 100vh;
+}
+
+.SalesReturn-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.SalesReturn-page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.25rem;
+}
+
+.SalesReturn-page-subtitle {
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.SalesReturn-btn-add {
+    background: #8ce043;
+    color: #1a4208;
+    border: none;
+    padding: 0.6rem 1.25rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(140, 224, 67, 0.2);
+    transition: background 0.2s;
+}
+
+.SalesReturn-btn-add:hover {
+    background: #7ccb3a;
+}
+
+/* Summary Cards Grid */
+.SalesReturn-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.SalesReturn-summary-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-left: 4px solid transparent;
+}
+
+.SalesReturn-summary-card.SalesReturn-card-blue {
+    border-left-color: #3b82f6;
+}
+
+.SalesReturn-summary-card.SalesReturn-card-green {
+    border-left-color: #10b981;
+}
+
+.SalesReturn-summary-card.SalesReturn-card-orange {
+    border-left-color: #f59e0b;
+}
+
+.SalesReturn-summary-card.SalesReturn-card-purple {
+    border-left-color: #a855f7;
+}
+
+.SalesReturn-card-label {
+    display: block;
+    color: #64748b;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.SalesReturn-card-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin: 0;
+}
+
+.SalesReturn-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.15;
+}
+
+.SalesReturn-icon-blue {
+    background: #3b82f6;
+    color: #3b82f6;
+}
+
+.SalesReturn-icon-green {
+    background: #10b981;
+    color: #10b981;
+}
+
+.SalesReturn-icon-orange {
+    background: #f59e0b;
+    color: #f59e0b;
+}
+
+.SalesReturn-icon-purple {
+    background: #a855f7;
+    color: #a855f7;
+}
+
+/* Table Section */
+.SalesReturn-table-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.SalesReturn-table-controls {
+    padding: 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.SalesReturn-search-wrapper {
+    position: relative;
+    width: 300px;
+}
+
+.SalesReturn-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+}
+
+.SalesReturn-search-input {
+    width: 50%;
+    padding: 0.6rem 1rem 0.6rem 2.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.SalesReturn-controls-right {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.SalesReturn-btn-outline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.SalesReturn-btn-outline:hover {
+    background: #f8fafc;
+    color: #1e293b;
+}
+
+.SalesReturn-table-container {
+    overflow-x: auto;
+}
+
+.SalesReturn-sales-return-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.SalesReturn-sales-return-table th {
+    text-align: left;
+    padding: 1rem;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+.SalesReturn-sales-return-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    font-size: 0.9rem;
+    vertical-align: middle;
+}
+
+/* Column Specifics */
+.SalesReturn-fw-600 {
+    font-weight: 600;
+}
+
+.SalesReturn-fw-700 {
+    font-weight: 700;
+}
+
+.SalesReturn-text-primary {
+    color: #3b82f6;
+}
+
+.SalesReturn-text-center {
+    text-align: center;
+}
+
+.SalesReturn-text-right {
+    text-align: right;
+}
+
+.SalesReturn-text-red {
+    color: #ef4444;
+    margin-left: 2px;
+}
+
+.SalesReturn-reason-text {
+    font-size: 0.85rem;
+    color: #64748b;
+    font-style: italic;
+}
+
+/* Status Badges */
+.SalesReturn-invoice-number-badge {
+    display: inline-block;
+    background: #8ce043;
+    color: #1a4208;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.SalesReturn-sales-return-status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.SalesReturn-sales-return-status-badge.SalesReturn-status-success {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.SalesReturn-sales-return-status-badge.SalesReturn-status-warning {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.SalesReturn-sales-return-status-badge.SalesReturn-status-danger {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.SalesReturn-sales-return-status-badge.SalesReturn-status-neutral {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.SalesReturn-sales-return-status-badge.SalesReturn-status-draft {
+    background: #eff6ff;
+    color: #3b82f6;
+}
+
+/* Action Buttons */
+.SalesReturn-action-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.SalesReturn-sales-return-action-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    color: white;
+    transition: all 0.2s;
+}
+
+.SalesReturn-sales-return-action-btn.SalesReturn-view {
+    background-color: #f59e0b;
+}
+
+.SalesReturn-sales-return-action-btn.SalesReturn-view:hover {
+    background-color: #d97706;
+}
+
+.SalesReturn-sales-return-action-btn.SalesReturn-edit {
+    background-color: #22d3ee;
+}
+
+.SalesReturn-sales-return-action-btn.SalesReturn-edit:hover {
+    background-color: #06b6d4;
+}
+
+.SalesReturn-sales-return-action-btn.SalesReturn-delete {
+    background-color: #f43f5e;
+}
+
+.SalesReturn-sales-return-action-btn.SalesReturn-delete:hover {
+    background-color: #e11d48;
+}
+
+.SalesReturn-sales-return-action-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: white;
+    display: block;
+}
+
+
+/* --- MODAL STYLES --- */
+.SalesReturn-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+}
+
+.SalesReturn-modal-content.SalesReturn-return-modal {
+    background: white;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.SalesReturn-modal-header {
+    padding: 1.25rem 2rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.SalesReturn-modal-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+}
+
+.SalesReturn-close-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+}
+
+.SalesReturn-close-btn:hover {
+    background: #f1f5f9;
+    color: #ef4444;
+}
+
+.SalesReturn-modal-body {
+    padding: 2rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.SalesReturn-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.SalesReturn-form-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 0.15rem;
+}
+
+.SalesReturn-form-input,
+.SalesReturn-form-select,
+.SalesReturn-form-textarea {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.SalesReturn-form-input:focus,
+.SalesReturn-form-select:focus,
+.SalesReturn-form-textarea:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.SalesReturn-disabled-input {
+    background-color: #f1f5f9;
+    color: #64748b;
+    cursor: not-allowed;
+}
+
+.SalesReturn-form-row {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.SalesReturn-three-col {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.SalesReturn-mb-4 {
+    margin-bottom: 1rem;
+}
+
+.SalesReturn-mb-6 {
+    margin-bottom: 1.5rem;
+}
+
+/* Items Section */
+.SalesReturn-section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.75rem;
+}
+
+.SalesReturn-btn-add-item-blue {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: white;
+    border: 1px solid #3b82f6;
+    color: #3b82f6;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.SalesReturn-btn-add-item-blue:hover {
+    background: #eff6ff;
+}
+
+.SalesReturn-items-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.SalesReturn-items-table-header {
+    display: grid;
+    grid-template-columns: 2.2fr 1.5fr 0.8fr 1fr 0.8fr 1.2fr 0.5fr;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+
+.SalesReturn-item-row {
+    display: grid;
+    grid-template-columns: 2.2fr 1.5fr 0.8fr 1fr 0.8fr 1.2fr 0.5fr;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.75rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.SalesReturn-item-row:hover {
+    border-color: #8ce043;
+    box-shadow: 0 4px 12px rgba(140, 224, 67, 0.1);
+}
+
+.SalesReturn-item-row select.SalesReturn-form-input,
+.SalesReturn-item-row input.SalesReturn-form-input {
+    height: 36px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+}
+
+.SalesReturn-item-row select.SalesReturn-form-input:focus,
+.SalesReturn-item-row input.SalesReturn-form-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    outline: none;
+}
+
+.SalesReturn-item-name {
+    width: 100%;
+}
+
+.SalesReturn-item-wh {
+    width: 100%;
+}
+
+.SalesReturn-item-qty {
+    width: 100%;
+}
+
+.SalesReturn-item-rate {
+    width: 100%;
+}
+
+.SalesReturn-item-tax {
+    width: 100%;
+}
+
+.SalesReturn-item-amount {
+    font-weight: 700;
+    color: #1e293b;
+    text-align: right;
+    font-size: 0.9rem;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    padding-right: 0.5rem;
+}
+
+.SalesReturn-item-col-name,
+.SalesReturn-item-col-wh,
+.SalesReturn-item-col-qty,
+.SalesReturn-item-col-rate,
+.SalesReturn-item-col-tax,
+.SalesReturn-item-col-amount,
+.SalesReturn-item-col-action {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.SalesReturn-invoice-linked-indicator {
+    padding: 0.5rem;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.SalesReturn-btn-remove-item {
+    background: #fee2e2;
+    color: #ef4444;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.SalesReturn-btn-remove-item:hover {
+    background: #fecaca;
+}
+
+/* Footer */
+.SalesReturn-modal-footer {
+    padding: 1.25rem 2rem;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    background: #f8fafc;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+.SalesReturn-btn-cancel {
+    background: #64748b;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.SalesReturn-btn-cancel:hover {
+    background: #475569;
+}
+
+.SalesReturn-btn-submit-green {
+    background: #209fa6;
+    /* Teal color from image hint */
+    color: white;
+    border: none;
+    padding: 0.6rem 2rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.SalesReturn-btn-submit-green:hover {
+    background: #18868c;
+}
+
+/* Confirmation Modal Reuse Styles */
+.SalesReturn-confirmation-modal {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.SalesReturn-confirmation-modal h3 {
+    margin-top: 1rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.SalesReturn-confirmation-modal p {
+    color: #64748b;
+    margin-bottom: 1.5rem;
+}
+
+.SalesReturn-confirmation-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.SalesReturn-btn-delete-confirm {
+    padding: 0.6rem 1.2rem;
+    background: #ef4444;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.SalesReturn-btn-delete-confirm:hover {
+    background: #dc2626;
+}
+
+/* View Modal Specifics */
+.SalesReturn-view-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    background: #fff;
+}
+
+.SalesReturn-view-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.SalesReturn-view-value {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.SalesReturn-view-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.SalesReturn-view-items-table th {
+    background: #f8fafc;
+    padding: 0.75rem;
+    text-align: left;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.SalesReturn-view-items-table td {
+    padding: 0.75rem;
+    border-top: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+}
+
+/* ============================
+   RESPONSIVE STYLES
+   ============================ */
+
+/* Tablet (max-width: 991px) */
+@media (max-width: 991.98px) {
+    .SalesReturn-sales-return-page {
+        padding: 1rem;
+    }
+
+    .SalesReturn-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+
+    .SalesReturn-three-col {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
+
+/* Mobile (max-width: 640px) */
+@media (max-width: 640.98px) {
+    .SalesReturn-page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .SalesReturn-header-actions {
+        width: 100%;
+    }
+
+    .SalesReturn-btn-add {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .SalesReturn-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Table Controls */
+    .SalesReturn-table-controls {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .SalesReturn-search-wrapper {
+        width: 100%;
+    }
+
+    .SalesReturn-controls-right {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 5px;
+    }
+
+    /* Modal Mobile */
+    .SalesReturn-modal-content.SalesReturn-return-modal {
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        border-radius: 0;
+    }
+
+    .SalesReturn-modal-header {
+        padding: 1rem;
+    }
+
+    .SalesReturn-modal-body {
+        padding: 1rem;
+    }
+
+    /* Form Rows */
+    .SalesReturn-form-row,
+    .SalesReturn-three-col {
+        grid-template-columns: 1fr;
+    }
+
+    /* Input items list - make it scrollable */
+    .SalesReturn-items-section {
+        overflow-x: auto;
+    }
+
+    .SalesReturn-items-list {
+        min-width: 700px;
+        /* Force scroll */
+    }
+
+    .SalesReturn-items-table-header {
+        min-width: 700px;
+    }
+
+    .SalesReturn-item-row {
+        min-width: 700px;
+    }
+
+    /* Footer */
+    .SalesReturn-modal-footer {
+        flex-direction: column-reverse;
+        /* Cancel at bottom */
+        padding: 1rem;
+    }
+
+    .SalesReturn-btn-cancel,
+    .SalesReturn-btn-submit-green {
+        width: 100%;
+        text-align: center;
+    }
+
+    /* View Modal */
+    .SalesReturn-view-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================
+   RECEIPT / VIEW DOCUMENT STYLES
+   ============================================ */
+
+.SalesReturn-receipt-document {
+    background: white;
+    padding: 2.5rem;
+    font-family: 'Segoe UI', sans-serif;
+    color: #1e293b;
+}
+
+/* Company Header */
+.SalesReturn-receipt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.SalesReturn-receipt-company-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.SalesReturn-receipt-logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.SalesReturn-receipt-company-name {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 0.2rem;
+}
+
+.SalesReturn-receipt-company-address {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 0.2rem;
+}
+
+.SalesReturn-receipt-company-contact {
+    font-size: 0.82rem;
+    color: #64748b;
+}
+
+.SalesReturn-receipt-title-block {
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.SalesReturn-receipt-title {
+    font-size: 2rem;
+    font-weight: 900;
+    color: #ef4444;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+}
+
+.SalesReturn-receipt-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.SalesReturn-receipt-meta-label {
+    font-weight: 600;
+    color: #94a3b8;
+    margin-right: 4px;
+}
+
+.SalesReturn-receipt-divider {
+    border: none;
+    border-top: 2px solid #e2e8f0;
+    margin: 1.25rem 0;
+}
+
+/* Address Row */
+.SalesReturn-receipt-address-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.SalesReturn-receipt-section-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.35rem;
+}
+
+.SalesReturn-receipt-customer-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.2rem;
+}
+
+.SalesReturn-receipt-customer-addr {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 0.15rem;
+}
+
+/* Items Table */
+.SalesReturn-receipt-items-section {
+    margin-bottom: 2rem;
+}
+
+.SalesReturn-receipt-items-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.SalesReturn-receipt-items-table thead tr {
+    background: #1e293b;
+    color: white;
+}
+
+.SalesReturn-receipt-items-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.SalesReturn-receipt-items-table td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+}
+
+.SalesReturn-receipt-items-table tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+.SalesReturn-receipt-total-row td {
+    padding: 0.85rem 1rem;
+    background: #fef2f2;
+    border-top: 2px solid #fca5a5;
+}
+
+/* Reason Box */
+.SalesReturn-receipt-reason-box {
+    background: #f8fafc;
+    border-left: 4px solid #3b82f6;
+    padding: 0.75rem 1rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.875rem;
+    color: #475569;
+    margin-bottom: 2rem;
+}
+
+/* Signature Section */
+.SalesReturn-receipt-signature-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 3rem;
+    margin: 2.5rem 0 1.5rem;
+    padding-top: 1rem;
+}
+
+.SalesReturn-receipt-sig-box {
+    flex: 1;
+    text-align: center;
+}
+
+.SalesReturn-receipt-sig-line {
+    border-top: 2px solid #94a3b8;
+    margin-bottom: 0.5rem;
+    height: 40px;
+}
+
+.SalesReturn-receipt-sig-label {
+    font-size: 0.8rem;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Footer text */
+.SalesReturn-receipt-footer {
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 1rem;
+    text-align: center;
+    font-size: 0.78rem;
+    color: #94a3b8;
+}
+
+.SalesReturn-receipt-footer p {
+    margin: 0.2rem 0;
+}
+
+/* Print Button */
+.SalesReturn-btn-print {
+    background: #1e293b;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: background 0.2s;
+}
+
+.SalesReturn-btn-print:hover {
+    background: #0f172a;
+}
+
+
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+    body {
+        visibility: hidden !important;
+        background: white !important;
+    }
+
+    #sales-return-print-content,
+    #sales-return-print-content * {
+        visibility: visible !important;
+    }
+
+    #sales-return-print-content {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        padding: 1.5rem !important;
+        background: white !important;
+        display: block !important;
+        box-shadow: none !important;
+    }
+
+    .SalesReturn-no-print {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    .SalesReturn-receipt-items-table thead tr {
+        background: #1e293b !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .SalesReturn-receipt-total-row td {
+        background: #fef2f2 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .SalesReturn-receipt-header,
+    .SalesReturn-receipt-address-row,
+    .SalesReturn-receipt-items-section,
+    .SalesReturn-receipt-signature-row {
+        page-break-inside: avoid;
+    }
+}

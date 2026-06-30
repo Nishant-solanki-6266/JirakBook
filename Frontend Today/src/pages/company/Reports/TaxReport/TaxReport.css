@@ -1,0 +1,285 @@
+.tax-report-page {
+    padding: 2rem;
+    background-color: #f8fafc;
+    min-height: 100vh;
+    font-family: 'Inter', sans-serif;
+}
+
+.report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+}
+
+.page-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 0.25rem;
+}
+
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #94a3b8;
+    font-size: 0.8rem;
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.breadcrumb-item.active {
+    color: #64748b;
+}
+
+.btn-download-green {
+    background: #8ce043;
+    color: white;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 6px -1px rgba(140, 224, 67, 0.2);
+}
+
+.export-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.export-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    min-width: 180px;
+    overflow: hidden;
+}
+
+.export-menu button {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    background: none;
+    border: none;
+    font-size: 0.85rem;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.export-menu button:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.export-menu button:not(:last-child) {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    padding: 1.25rem;
+}
+
+/* Filter Bar */
+.filter-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1.25rem;
+}
+
+.filter-right {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.year-select {
+    padding: 0.5rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #475569;
+    outline: none;
+    min-width: 100px;
+}
+
+.btn-icon-square {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: none;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.btn-icon-square.green {
+    background: #8ce043;
+}
+
+.btn-icon-square.red {
+    background: #ef4444;
+}
+
+/* Info Cards */
+.info-cards-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.info-card label {
+    display: block;
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 0.25rem;
+}
+
+.info-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+}
+
+/* Section & Tables */
+.section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 1rem;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.tax-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1000px;
+    /* Ensure horizontal scroll on small screens */
+}
+
+.tax-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #1e293b;
+    text-transform: uppercase;
+    padding: 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.tax-table td {
+    padding: 1rem 0.75rem;
+    font-size: 0.85rem;
+    color: #64748b;
+    border-bottom: 1px solid #f8fafc;
+}
+
+.tax-table .tax-name {
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.mt-6 {
+    margin-top: 1.5rem;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-muted {
+    color: #94a3b8;
+}
+
+.py-4 {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+/* ============================
+   RESPONSIVE STYLES
+   ============================ */
+
+/* Tablet & Mobile Layout (max-width: 991px) */
+@media (max-width: 991.98px) {
+    .tax-report-page {
+        padding: 1rem;
+    }
+
+    .info-cards-row {
+        gap: 1rem;
+    }
+}
+
+/* Mobile Specific (max-width: 640px) */
+@media (max-width: 640.98px) {
+
+    /* Header */
+    .report-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .btn-download-green {
+        align-self: flex-end;
+        /* Move download button to the right */
+        margin-top: -3rem;
+        /* Overlap nicely or adjust as needed */
+    }
+
+    /* Filters */
+    .filter-bar {
+        padding: 0.75rem 0rem;
+        justify-content: flex-start;
+    }
+
+    .filter-right {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .year-select {
+        flex: 1;
+    }
+
+    /* Info Cards */
+    .info-cards-row {
+        grid-template-columns: 1fr;
+        /* Single column */
+        gap: 1rem;
+    }
+
+    /* Tables */
+    .tax-table {
+        min-width: 600px;
+        /* Ensure scroll */
+    }
+}
