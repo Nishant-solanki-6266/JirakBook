@@ -251,6 +251,7 @@ const DeliveryChallan = () => {
     const handleSelectOrder = (order) => {
         setSelectedOrder(order);
         setCustomerId(order.customerId);
+        if (order.notes) setNotes(order.notes);
 
         const c = order.customer || {};
         setCustomerDetails({
@@ -512,7 +513,7 @@ const DeliveryChallan = () => {
                 console.error(e);
             }
         }
-        setItems([...items, { id: Date.now(), productId: '', warehouseId: defWarehouseId, description: '', ordered: 0, delivered: 0, unit: 'pcs' }]);
+        setItems([...items, { id: Date.now() + Math.random(), productId: '', warehouseId: defWarehouseId, description: '', ordered: 0, delivered: 0, unit: 'pcs' }]);
     };
 
     const removeItem = (id) => {
@@ -884,9 +885,11 @@ const DeliveryChallan = () => {
                                                     onChange={(e) => setOrderSearchTerm(e.target.value)}
                                                 />
                                             </div>
-                                            <button className="Zirak-DC-btn-direct-entry" onClick={() => { setCreationMode('direct'); setActiveModalStep(2); }}>
-                                                Direct Delivery (No Order) <ArrowRight size={14} className="ml-1" />
-                                            </button>
+                                            {hasPermission('bypass strict conversion') && (
+                                                <button className="Zirak-DC-btn-direct-entry" onClick={() => { setCreationMode('direct'); setActiveModalStep(2); }}>
+                                                    Direct Delivery (No Order) <ArrowRight size={14} className="ml-1" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 

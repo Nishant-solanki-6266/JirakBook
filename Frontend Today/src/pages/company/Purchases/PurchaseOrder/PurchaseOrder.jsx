@@ -865,7 +865,7 @@ const PurchaseOrder = () => {
                                         <td className="">
                                             <div className="po-action-buttons">
                                                 <button className="PurchaseOrder-action-btn view" onClick={() => handleView(o.id)} title="View"><Eye size={16} /></button>
-                                                {o.status !== 'CONVERTED' ? (
+                                                {o.status !== 'CONVERTED' && o.status !== 'COMPLETED' ? (
                                                     <button className="PurchaseOrder-action-btn convert" onClick={() => handleConvert(o.id)} title="Convert to GRN" style={{ backgroundColor: '#4f46e5', color: 'white', padding: '6px', borderRadius: '4px' }}><Truck size={16} /></button>
                                                 ) : (
                                                     <span className="text-xs font-semibold px-2 py-1 bg-gray-100 text-gray-500 rounded" style={{ alignSelf: 'center' }}>Converted</span>
@@ -1210,8 +1210,8 @@ const PurchaseOrder = () => {
                                         type="text"
                                         value={orderMeta.orderNumber || ''}
                                         onChange={(e) => setOrderMeta({ ...orderMeta, orderNumber: e.target.value })}
-                                        disabled={isViewMode || !!editingId}
-                                        className={`PurchaseOrder-meta-input ${isViewMode || editingId ? 'PurchaseOrder-disabled' : ''}`}
+                                        disabled={isViewMode}
+                                        className={`PurchaseOrder-meta-input ${isViewMode ? 'PurchaseOrder-disabled' : ''}`}
                                     />
                                 </div>
                                 <div className="PurchaseOrder-meta-item">
@@ -1499,7 +1499,7 @@ const PurchaseOrder = () => {
                         </button>
                         {isViewMode && (
                             <>
-                                {orders.find(o => o.id === editingId)?.status !== 'CONVERTED' ? (
+                                {orders.find(o => o.id === editingId)?.status !== 'CONVERTED' && orders.find(o => o.id === editingId)?.status !== 'COMPLETED' ? (
                                     <button className="PurchaseOrder-btn-primary-green" onClick={() => handleConvert(editingId)} style={{ backgroundColor: '#4f46e5' }}>
                                         <Truck size={18} className="mr-2" /> Convert to GRN
                                     </button>

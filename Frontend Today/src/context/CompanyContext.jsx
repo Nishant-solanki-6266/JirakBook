@@ -1,5 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import toast from 'react-hot-toast';
 import companyService from '../api/companyService';
+import currencyService from '../api/currencyService';
 import GetCompanyId from '../api/GetCompanyId';
 import { AuthContext } from './AuthContext';
 
@@ -9,6 +11,9 @@ export const CompanyProvider = ({ children }) => {
     const { currentUser } = useContext(AuthContext);
     const [companySettings, setCompanySettings] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [systemBaseCurrency, setSystemBaseCurrency] = useState(null);
+    const [exchangeRate, setExchangeRate] = useState(1);
+    const [ratesLoading, setRatesLoading] = useState(false);
 
     const fetchCompanySettings = async () => {
         const companyId = GetCompanyId();
@@ -35,8 +40,40 @@ export const CompanyProvider = ({ children }) => {
         }
     }, [currentUser]);
 
+    useEffect(() => {
+        if (companySettings?.currency) {
+            const storedBase = localStorage.getItem('systemBaseCurrency');
+            if (!storedBase) {
+                localStorage.setItem('systemBaseCurrency', companySettings.currency);
+                setSystemBaseCurrency(companySettings.currency);
+            } else {
+                setSystemBaseCurrency(storedBase);
+            }
+        }
+    }, [companySettings]);
+
+    useEffect(() => {
+        if (systemBaseCurrency && companySettings?.currency && systemBaseCurrency !== companySettings.currency) {
+            setRatesLoading(true);
+            currencyService.fetchExchangeRates(systemBaseCurrency).then(rates => {
+                if (rates && rates[companySettings.currency]) {
+                    setExchangeRate(rates[companySettings.currency]);
+                } else {
+                    toast.error("Using cached exchange rates. Live API unavailable.", { id: 'exchange_warning' });
+                }
+                setRatesLoading(false);
+            });
+        } else {
+            setExchangeRate(1);
+            setRatesLoading(false);
+        }
+    }, [systemBaseCurrency, companySettings?.currency]);
+
     const formatCurrency = (amount) => {
         const currencyCode = companySettings?.currency || 'USD';
+
+        // Dynamically convert the amount using the exchange rate
+        const convertedAmount = (amount || 0) * exchangeRate;
 
         // Dynamic locale mapping to ensure proper thousand/lakh separators
         // Most currencies can use 'en-US' formatting with their specific symbol,
@@ -60,15 +97,23 @@ export const CompanyProvider = ({ children }) => {
         const locale = localeMap[currencyCode] || 'en-US';
 
         try {
-            return new Intl.NumberFormat(locale, {
+            const isNegative = convertedAmount < 0;
+            const absAmount = Math.abs(convertedAmount);
+            
+            const formatted = new Intl.NumberFormat(locale, {
                 style: 'currency',
                 currency: currencyCode,
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
-            }).format(amount || 0);
+            }).format(absAmount);
+            
+            return isNegative ? `(${formatted})` : formatted;
         } catch (e) {
             // Ultimate fallback for very rare or unsupported currency codes
-            return `${currencyCode} ${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const isNegative = convertedAmount < 0;
+            const absAmount = Math.abs(convertedAmount);
+            const formatted = `${currencyCode} ${absAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return isNegative ? `(${formatted})` : formatted;
         }
     };
 

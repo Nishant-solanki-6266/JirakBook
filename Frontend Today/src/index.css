@@ -85,3 +85,128 @@ textarea {
 ::-webkit-scrollbar-thumb:hover {
     background: #a5b894;
 }
+
+/* =========================================
+   GLOBAL RESPONSIVE OVERRIDES
+   Added for proper mobile/tablet layout without changing JS/React structure
+   ========================================= */
+
+@media (max-width: 991.98px) {
+    /* 1. LAYOUT & SIDEBAR FIXES */
+    .layout-container {
+        flex-direction: column;
+    }
+    
+    .main-content {
+        width: 100% !important;
+        margin-left: 0 !important;
+    }
+
+    /* 2. FORMS & GRIDS: Force 1-column layout on smaller screens */
+    .form-grid,
+    [class*="-form-grid"],
+    [class*="-details-grid"],
+    [class*="-grid-2"],
+    [class*="-grid-3"],
+    [class*="-grid-4"],
+    .companySetting-form-grid,
+    .numbering-settings-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    /* 3. FLEX CONTAINERS & HEADERS: Stack them instead of inline */
+    [class*="-page-header"],
+    [class*="-modal-header"],
+    .invoice-controls,
+    .custom-field-row-card {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 1rem !important;
+    }
+
+    [class*="-page-header"] > div,
+    [class*="-header-actions"] {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* Make typical action buttons stretch on mobile */
+    [class*="-page-header"] button, 
+    [class*="-header-actions"] button,
+    [class*="-actions"] button {
+        flex: 1;
+        min-width: fit-content;
+        justify-content: center;
+    }
+
+    /* 4. TABLES: Prevent horizontal blowout by allowing scroll */
+    .table-container, 
+    [class*="-table-container"], 
+    [class*="-table-card"],
+    [class*="-table-wrapper"],
+    .table-responsive,
+    .invoice-table-preview,
+    .numbering-settings-table {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        display: block !important;
+        width: 100% !important;
+        border-radius: 8px;
+    }
+
+    /* Prevent tables from shrinking too much and getting unreadable */
+    table {
+        min-width: 700px;
+    }
+
+    /* 5. MODALS: Make them take full width */
+    .modal-content,
+    [class*="-modal-content"] {
+        width: 95% !important;
+        max-width: 95% !important;
+        margin: 1rem auto !important;
+    }
+
+    /* 6. SPECIFIC OVERRIDES */
+    .invoice-preview-container, 
+    .companySetting-settings-container {
+        padding: 1rem !important;
+        overflow-x: auto;
+    }
+
+    .companySetting-tab-btn {
+        width: 100%;
+        text-align: left;
+    }
+}
+
+@media (max-width: 576px) {
+    /* Micro mobile fixes */
+    .page-content,
+    [class*="-page"] {
+        padding: 0.5rem !important;
+    }
+
+    [class*="-page-header"] button, 
+    [class*="-header-actions"] button {
+        width: 100%;
+        flex: none;
+    }
+}
+
+/* =========================================
+   HIDE SPINNER ARROWS ON ALL NUMBER INPUTS
+   ========================================= */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}

@@ -197,6 +197,7 @@ const Invoice = () => {
                 setCustomerShippingAddresses(inv.customer?.shippingaddress || []);
                 setInvoiceMeta({
                     manualNo: inv.invoiceNumber,
+                    manualReference: inv.manualReference || '',
                     date: new Date(inv.date).toISOString().split('T')[0],
                     dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : ''
                 });
@@ -247,7 +248,8 @@ const Invoice = () => {
                 _attachments: {
                     photos: selectedPhotos,
                     files: selectedFiles
-                }
+                },
+                _terms: terms
             };
 
             const data = {
@@ -837,12 +839,14 @@ const Invoice = () => {
                 _attachments: {
                     photos: selectedPhotos,
                     files: selectedFiles
-                }
+                },
+                _terms: terms
             };
 
             const data = {
                 customFields: JSON.stringify(customFieldsPayload),
                 invoiceNumber: invoiceMeta.manualNo || `INV-${Date.now()}`,
+                manualReference: invoiceMeta.manualReference || '',
                 date: invoiceMeta.date,
                 dueDate: invoiceMeta.dueDate,
                 customerId: parseInt(customerId),
@@ -932,6 +936,7 @@ const Invoice = () => {
     const handleSelectOrder = (order) => {
         setSelectedOrder(order);
         setCustomerId(order.customerId);
+        if (order.notes) setNotes(order.notes);
         setSelectedCustomerCreditPeriod(order.customer?.creditPeriod || 0);
         const newDueDate = calculateDueDate(invoiceMeta.date, order.customer?.creditPeriod || 0);
         setInvoiceMeta(prev => ({ ...prev, dueDate: newDueDate }));
@@ -975,6 +980,7 @@ const Invoice = () => {
         setSelectedChallan(challan);
         setSelectedOrder(null);
         setCustomerId(challan.customerId);
+        if (challan.notes) setNotes(challan.notes);
         setSelectedCustomerCreditPeriod(challan.customer?.creditPeriod || 0);
         const newDueDate = calculateDueDate(invoiceMeta.date, challan.customer?.creditPeriod || 0);
         setInvoiceMeta(prev => ({ ...prev, dueDate: newDueDate }));
@@ -1556,9 +1562,9 @@ const Invoice = () => {
                             <div style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
                                 <h3 className="invoice-section-header">Notes &amp; Terms</h3>
                                 {companyDetails.notes && <p style={{ color: '#64748b', fontSize: '0.9rem', whiteSpace: 'pre-line', marginBottom: '8px' }}>{companyDetails.notes}</p>}
-                                {companyDetails.terms && (
+                                {terms && (
                                     <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                        <strong>Terms &amp; Conditions:</strong> {companyDetails.terms}
+                                        <strong>Terms &amp; Conditions:</strong> {terms}
                                     </div>
                                 )}
                             </div>
@@ -2124,6 +2130,14 @@ const Invoice = () => {
                                         value={invoiceMeta.manualNo}
                                         onChange={(e) => setInvoiceMeta({ ...invoiceMeta, manualNo: e.target.value })}
                                         placeholder="Auto-Generated"
+                                        className="Invoice-compact-input" />
+                                </div>
+                                <div className="Invoice-meta-col">
+                                    <label>Manual Reference</label>
+                                    <input type="text"
+                                        value={invoiceMeta.manualReference || ''}
+                                        onChange={(e) => setInvoiceMeta({ ...invoiceMeta, manualReference: e.target.value })}
+                                        placeholder="Ref No."
                                         className="Invoice-compact-input" />
                                 </div>
                                 <div className="Invoice-meta-col">
@@ -2767,13 +2781,15 @@ const Invoice = () => {
                             </button>
                         </div>
                         <div className="Invoice-selection-grid-p">
-                            <button className="Invoice-sel-btn-p" onClick={() => { setCreationMode('direct'); setShowSelectionModal(false); setShowAddModal(true); }}>
-                                <div className="Invoice-sel-icon-p"><FileText /></div>
-                                <div className="Invoice-sel-text-p">
-                                    <strong>Direct Invoice</strong>
-                                    <span>Create manually without link</span>
-                                </div>
-                            </button>
+                            {hasPermission('bypass strict conversion') && (
+                                <button className="Invoice-sel-btn-p" onClick={() => { setCreationMode('direct'); setShowSelectionModal(false); setShowAddModal(true); }}>
+                                    <div className="Invoice-sel-icon-p"><FileText /></div>
+                                    <div className="Invoice-sel-text-p">
+                                        <strong>Direct Invoice</strong>
+                                        <span>Create manually without link</span>
+                                    </div>
+                                </button>
+                            )}
                             <button className="Invoice-sel-btn-p" onClick={() => setCreationMode('select_so')}>
                                 <div className="Invoice-sel-icon-p"><ShoppingCart /></div>
                                 <div className="Invoice-sel-text-p">

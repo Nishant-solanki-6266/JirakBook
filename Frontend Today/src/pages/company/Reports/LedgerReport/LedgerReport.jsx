@@ -31,6 +31,9 @@ const LedgerReport = () => {
     const navigate = useNavigate();
 
     // State
+
+    const [hidePOSReceipts, setHidePOSReceipts] = useState(false);
+    const [hidePOSSales, setHidePOSSales] = useState(false);
     const [ledgers, setLedgers] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -42,8 +45,8 @@ const LedgerReport = () => {
         endDate: ''
     });
     const [filterType, setFilterType] = useState('ALL');
-    const [hidePOSSales, setHidePOSSales] = useState(false);
-    const [hidePOSReceipts, setHidePOSReceipts] = useState(false);
+    const [hideInvoice, setHideInvoice] = useState(false);
+    const [hideReceipt, setHideReceipt] = useState(false);
     const [enableColors, setEnableColors] = useState(true);
 
 
@@ -162,8 +165,8 @@ const LedgerReport = () => {
             endDate: new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0]
         });
         setFilterType('ALL');
-        setHidePOSSales(false);
-        setHidePOSReceipts(false);
+        setHideInvoice(false);
+        setHideReceipt(false);
         setEnableColors(true);
         // Optionally reset account or keep it
         fetchTransactions();
@@ -597,22 +600,20 @@ const LedgerReport = () => {
         const groupType = currentLedger?.groupType;
         const openingBalance = parseFloat(currentLedger?.openingBalance || 0);
 
-        // Filter POS transactions if checkboxes are checked
+        // Filter transactions if checkboxes are checked
         let filteredTxns = [...transactions];
-        if (hidePOSSales) {
+        if (hideInvoice) {
             filteredTxns = filteredTxns.filter(t => {
-                const isPOS = t.voucherType === 'POS_INVOICE' || 
-                              (t.voucherType || '').toUpperCase() === 'POS_INVOICE' || 
-                              (t.voucherType || '').toUpperCase() === 'POS INVOICE' || 
-                              (t.posInvoice && (t.voucherType || '').toUpperCase() !== 'RECEIPT');
-                return !isPOS;
+                const type = (t.voucherType || '').toUpperCase();
+                const isInvoice = type === 'INVOICE' || type === 'POS_INVOICE' || type === 'POS INVOICE' || type === 'SALES_INVOICE' || type === 'BILL' || type === 'PURCHASE_BILL';
+                return !isInvoice;
             });
         }
-        if (hidePOSReceipts) {
+        if (hideReceipt) {
             filteredTxns = filteredTxns.filter(t => {
-                const isReceipt = (t.voucherType || '').toUpperCase() === 'RECEIPT';
-                const hasPosInvoice = t.posInvoiceId || t.posInvoice || t.posinvoiceId;
-                return !(isReceipt && hasPosInvoice);
+                const type = (t.voucherType || '').toUpperCase();
+                const isReceipt = type === 'RECEIPT' || type === 'PAYMENT';
+                return !isReceipt;
             });
         }
 
@@ -779,11 +780,11 @@ const LedgerReport = () => {
         if (item.typeLabel === 'Opening Balance') return null;
 
         // Check manualStatus: "manual paid blue"
-        const isManual = item.invoice?.manualStatus || 
-                         item.purchaseBill?.manualStatus || 
-                         item.receipt?.manualStatus || 
-                         item.payment?.manualStatus || 
-                         item.posInvoice?.manualStatus;
+        const isManual = item.invoice?.manualStatus ||
+            item.purchaseBill?.manualStatus ||
+            item.receipt?.manualStatus ||
+            item.payment?.manualStatus ||
+            item.posInvoice?.manualStatus;
 
         if (isManual) {
             return {
@@ -909,22 +910,22 @@ const LedgerReport = () => {
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', height: '100%', marginTop: 'auto', marginBottom: '8px', fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>
                         <input
                             type="checkbox"
-                            checked={hidePOSSales}
-                            onChange={(e) => setHidePOSSales(e.target.checked)}
+                            checked={hideInvoice}
+                            onChange={(e) => setHideInvoice(e.target.checked)}
                             style={{ width: '16px', height: '16px', accentColor: '#8ce043', cursor: 'pointer' }}
                         />
-                        <span>Hide POS Sales</span>
+                        <span>Hide Invoice/Bill</span>
                     </label>
                 </div>
                 <div className="Ledger-filter-group" style={{ justifyContent: 'center', minWidth: '140px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', height: '100%', marginTop: 'auto', marginBottom: '8px', fontWeight: '500', color: '#64748b', fontSize: '0.85rem' }}>
                         <input
                             type="checkbox"
-                            checked={hidePOSReceipts}
-                            onChange={(e) => setHidePOSReceipts(e.target.checked)}
+                            checked={hideReceipt}
+                            onChange={(e) => setHideReceipt(e.target.checked)}
                             style={{ width: '16px', height: '16px', accentColor: '#8ce043', cursor: 'pointer' }}
                         />
-                        <span>Hide POS Receipts</span>
+                        <span>Hide Receipt/Payment</span>
                     </label>
                 </div>
                 <div className="Ledger-filter-group" style={{ justifyContent: 'center', minWidth: '150px' }}>
@@ -967,7 +968,7 @@ const LedgerReport = () => {
                         ) : groupedTransactions.length > 0 ? (
                             groupedTransactions.map((group, index) => (
                                 <React.Fragment key={group.groupKey}>
-                                    <tr 
+                                    <tr
                                         className={group.items.length > 1 ? 'Ledger-grouped-row' : ''}
                                         style={enableColors ? (() => {
                                             const colorStyle = getTransactionColor(group.items && group.items[0]);
@@ -1034,12 +1035,12 @@ const LedgerReport = () => {
                                     {expandedGroups[group.groupKey] && group.items.length > 1 && group.items.map((item, i) => {
                                         const colorStyle = enableColors ? getTransactionColor(item) : null;
                                         return (
-                                            <tr 
-                                                key={`${group.groupKey}-sub-${i}`} 
-                                                className="Ledger-sub-row" 
-                                                style={{ 
-                                                    backgroundColor: colorStyle ? colorStyle.background : '#f8fafc', 
-                                                    fontSize: '0.85rem' 
+                                            <tr
+                                                key={`${group.groupKey}-sub-${i}`}
+                                                className="Ledger-sub-row"
+                                                style={{
+                                                    backgroundColor: colorStyle ? colorStyle.background : '#f8fafc',
+                                                    fontSize: '0.85rem'
                                                 }}
                                             >
                                                 <td style={{ paddingLeft: '2rem', color: '#64748b' }}>
@@ -1063,9 +1064,9 @@ const LedgerReport = () => {
                                                                 </span>
                                                             );
                                                         })()
-                                                     ) : (
+                                                    ) : (
                                                         <span style={{ fontWeight: 500 }}>{formatVoucherType(item.voucherType || group.typeLabel)}</span>
-                                                     )}
+                                                    )}
                                                     <br />
                                                     <span
                                                         style={(item.refNo || group.refNo) && (item.refNo !== '-' || group.refNo !== '-') ? { fontSize: '0.7rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' } : { fontSize: '0.7rem', color: '#94a3b8' }}
