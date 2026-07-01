@@ -324,8 +324,8 @@ const Inventory = () => {
                 unitName: uomFormData.unitName,
                 weightPerUnit: uomFormData.weightPerUnit,
                 uomType: uomFormData.uomType,
-                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
-                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
                     : null,
                 conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
                 companyId: parseInt(companyId)
@@ -932,8 +932,8 @@ const Inventory = () => {
                                                     style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
                                                 />
                                                 <span> {
-                                                    isNaN(uomFormData.baseUnitId) 
-                                                        ? uomFormData.baseUnitId 
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
                                                         : (uoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
                                                 }</span>
                                             </div>

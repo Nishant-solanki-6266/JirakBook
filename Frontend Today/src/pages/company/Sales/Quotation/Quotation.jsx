@@ -69,7 +69,7 @@ const Quotation = () => {
     // Full Add Customer & Product Modal States
     const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
     const [showAddProductModal, setShowAddProductModal] = useState(false);
-    
+
     // Customer Modal States
     const [customerFormData, setCustomerFormData] = useState({
         name: '',
@@ -392,7 +392,7 @@ const Quotation = () => {
             const res = await customerServiceFromServices.createCustomer(payload);
             toast.success('Customer created successfully!');
             setShowAddCustomerModal(false);
-            
+
             // Refresh customer selection dropdown
             const companyId = GetCompanyId();
             const custRes = await customerService.getAll(companyId);
@@ -411,7 +411,7 @@ const Quotation = () => {
                     phone: added.phone || ''
                 });
             }
-            
+
             // Reset customer form
             setCustomerFormData({
                 name: '',
@@ -548,8 +548,8 @@ const Quotation = () => {
                 unitName: uomFormData.unitName,
                 weightPerUnit: uomFormData.weightPerUnit,
                 uomType: uomFormData.uomType,
-                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
-                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
                     : null,
                 conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
                 companyId: parseInt(companyId)
@@ -608,7 +608,7 @@ const Quotation = () => {
             await productServiceFromServices.createProduct(payload);
             toast.success('Product created successfully!');
             setShowAddProductModal(false);
-            
+
             // Refresh products
             const prodRes = await productService.getAll(companyId);
             if (prodRes?.data?.success) {
@@ -639,7 +639,7 @@ const Quotation = () => {
         setCustomerId('');
         setCustomerDetails({ address: '', email: '', phone: '' });
         setQuotationMeta({ manualNo: '', date: new Date().toISOString().split('T')[0], validTill: '' });
-        
+
         let defWarehouseId = '';
         if (companySettings?.inventoryConfig) {
             try {
@@ -1148,8 +1148,8 @@ const Quotation = () => {
                                         <select
                                             value={q.manualStatus ? q.status : 'AUTO'}
                                             onChange={(e) => handleStatusChange(q.id, e.target.value)}
-                                             className="Quotation-quotation-status-pill"
-                                             style={getStatusStyle(q.manualStatus ? q.status : 'AUTO')}
+                                            className="Quotation-quotation-status-pill"
+                                            style={getStatusStyle(q.manualStatus ? q.status : 'AUTO')}
                                         >
                                             <option value="AUTO">Auto ({q.status || 'Pending'})</option>
                                             <option value="DRAFT">DRAFT</option>
@@ -1327,9 +1327,9 @@ const Quotation = () => {
                                                     <tr key={item.id}>
                                                         <td style={{ width: '35%' }}>
                                                             <span className="font-bold text-sm text-gray-800 block">
-                                                                {item.productId ? allProducts.find(p => p.id === parseInt(item.productId))?.name : 
-                                                                 item.serviceId ? allServices.find(s => s.id === parseInt(item.serviceId))?.name : 
-                                                                 'N/A'}
+                                                                {item.productId ? allProducts.find(p => p.id === parseInt(item.productId))?.name :
+                                                                    item.serviceId ? allServices.find(s => s.id === parseInt(item.serviceId))?.name :
+                                                                        'N/A'}
                                                             </span>
                                                             {item.description && <span className="text-xs text-gray-500 block mt-0.5">{item.description}</span>}
                                                         </td>
@@ -1419,51 +1419,51 @@ const Quotation = () => {
 
                                     <hr className="Quotation-divider" />
 
-                                     <div className="Quotation-customer-section-compact">
-                                         <div className="Quotation-customer-field">
-                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                 <label className="Quotation-form-label-sm">Quotation To</label>
-                                                 {!isViewMode && (
-                                                     <button
-                                                         type="button"
-                                                         onClick={() => setShowAddCustomerModal(true)}
-                                                         className="Quotation-add-quick-btn"
-                                                         style={{
-                                                             backgroundColor: '#22c55e',
-                                                             color: '#ffffff',
-                                                             border: 'none',
-                                                             borderRadius: '4px',
-                                                             padding: '2px 8px',
-                                                             fontSize: '0.75rem',
-                                                             fontWeight: 'bold',
-                                                             cursor: 'pointer',
-                                                             display: 'flex',
-                                                             alignItems: 'center',
-                                                             gap: '4px'
-                                                         }}
-                                                     >
-                                                         <Plus size={12} /> Add Customer
-                                                     </button>
-                                                 )}
-                                             </div>
-                                             <select className="Quotation-form-select-compact"
-                                                 disabled={isViewMode}
-                                                 value={customerId} onChange={(e) => {
-                                                     const id = e.target.value;
-                                                     setCustomerId(id);
-                                                     const c = customers.find(cust => cust.id === parseInt(id));
-                                                     if (c) {
-                                                         setCustomerDetails({
-                                                             address: c.billingAddress || '',
-                                                             email: c.email || '',
-                                                             phone: c.phone || ''
-                                                         });
-                                                     }
-                                                 }}>
-                                                 <option value="">Select Customer...</option>
-                                                 {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                             </select>
-                                         </div>
+                                    <div className="Quotation-customer-section-compact">
+                                        <div className="Quotation-customer-field">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <label className="Quotation-form-label-sm">Quotation To</label>
+                                                {!isViewMode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAddCustomerModal(true)}
+                                                        className="Quotation-add-quick-btn"
+                                                        style={{
+                                                            backgroundColor: '#22c55e',
+                                                            color: '#ffffff',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '2px 8px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 'bold',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        <Plus size={12} /> Add Customer
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <select className="Quotation-form-select-compact"
+                                                disabled={isViewMode}
+                                                value={customerId} onChange={(e) => {
+                                                    const id = e.target.value;
+                                                    setCustomerId(id);
+                                                    const c = customers.find(cust => cust.id === parseInt(id));
+                                                    if (c) {
+                                                        setCustomerDetails({
+                                                            address: c.billingAddress || '',
+                                                            email: c.email || '',
+                                                            phone: c.phone || ''
+                                                        });
+                                                    }
+                                                }}>
+                                                <option value="">Select Customer...</option>
+                                                {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </select>
+                                        </div>
                                         <div className="Quotation-customer-field">
                                             <label className="Quotation-form-label-sm">Billing Address</label>
                                             <input type="text" placeholder="Billing Address" className="Quotation-detail-input-compact"
@@ -1524,31 +1524,31 @@ const Quotation = () => {
                                         </div>
                                     )}
 
-                                     <div className="Quotation-items-section-new">
-                                         {!isViewMode && (
-                                             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                                                 <button type="button" className="Quotation-btn-add-row" onClick={addItem} style={{ marginBottom: 0 }}>
-                                                     <Plus size={14} /> Add Line Item
-                                                 </button>
-                                                 <button
-                                                     type="button"
-                                                     className="Quotation-btn-add-row"
-                                                     onClick={() => setShowAddProductModal(true)}
-                                                     style={{
-                                                         backgroundColor: '#22c55e',
-                                                         borderColor: '#22c55e',
-                                                         color: '#ffffff',
-                                                         marginBottom: 0
-                                                     }}
-                                                 >
-                                                     <Plus size={14} /> Add Product
-                                                 </button>
-                                             </div>
-                                         )}
+                                    <div className="Quotation-items-section-new">
+                                        {!isViewMode && (
+                                            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                                                <button type="button" className="Quotation-btn-add-row" onClick={addItem} style={{ marginBottom: 0 }}>
+                                                    <Plus size={14} /> Add Line Item
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="Quotation-btn-add-row"
+                                                    onClick={() => setShowAddProductModal(true)}
+                                                    style={{
+                                                        backgroundColor: '#22c55e',
+                                                        borderColor: '#22c55e',
+                                                        color: '#ffffff',
+                                                        marginBottom: 0
+                                                    }}
+                                                >
+                                                    <Plus size={14} /> Add Product
+                                                </button>
+                                            </div>
+                                        )}
                                         <div className="Quotation-table-responsive">
                                             <table className="Quotation-new-items-table">
                                                 <thead>
-                                                     <tr>
+                                                    <tr>
                                                         <th style={{ width: '20%' }}>{getTableHeader('item', 'Item Detail').toUpperCase()}</th>
                                                         {getInvoiceLabel('showWarehouse') !== false && <th style={{ width: '12%' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
                                                         {getInvoiceLabel('showQty') !== false && <th style={{ width: '8%' }}>{getTableHeader('quantity', 'Qty').toUpperCase()}</th>}
@@ -1569,7 +1569,7 @@ const Quotation = () => {
                                                                     value={item.productId ? `p-${item.productId}` : item.serviceId ? `s-${item.serviceId}` : ''}
                                                                     onChange={(e) => {
                                                                         const val = e.target.value;
-                                                                         if (val.startsWith('p-')) {
+                                                                        if (val.startsWith('p-')) {
                                                                             const pId = val.split('-')[1];
                                                                             const p = allProducts.find(x => x.id === parseInt(pId));
                                                                             if (p) {
@@ -1755,7 +1755,7 @@ const Quotation = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="Quotation-bottom-right-col">
                                             <div className="Quotation-totals-box-container">
                                                 <div className="Quotation-totals-box">
@@ -2868,8 +2868,8 @@ const Quotation = () => {
                                                     style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
                                                 />
                                                 <span> {
-                                                    isNaN(uomFormData.baseUnitId) 
-                                                        ? uomFormData.baseUnitId 
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
                                                         : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
                                                 }</span>
                                             </div>

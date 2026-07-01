@@ -31,7 +31,6 @@ const LedgerReport = () => {
     const navigate = useNavigate();
 
     // State
-
     const [ledgers, setLedgers] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(false);

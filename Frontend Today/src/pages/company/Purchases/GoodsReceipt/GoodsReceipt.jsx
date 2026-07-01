@@ -29,6 +29,8 @@ import uomService from '../../../../services/uomService';
 import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
 import axiosInstance from '../../../../api/axiosInstance';
 import { Upload, Loader2 } from 'lucide-react';
+import chartOfAccountsService from '../../../../services/chartOfAccountsService';
+
 
 const GoodsReceipt = () => {
     const { hasPermission } = useContext(AuthContext);
@@ -68,6 +70,28 @@ const GoodsReceipt = () => {
 
     // Inline Modals States
     const [showAddVendorModal, setShowAddVendorModal] = useState(false);
+    const [accountTypes, setAccountTypes] = useState([]);
+
+    useEffect(() => {
+        if (showAddVendorModal) {
+            const fetchCOA = async () => {
+                try {
+                    const companyId = GetCompanyId();
+                    const res = await chartOfAccountsService.getAccountTypes(companyId);
+                    if (res?.success && Array.isArray(res.data)) {
+                        setAccountTypes(res.data);
+                    } else if (res?.data && Array.isArray(res.data)) {
+                        setAccountTypes(res.data);
+                    } else if (Array.isArray(res)) {
+                        setAccountTypes(res);
+                    }
+                } catch (e) {
+                    console.error("Error fetching account types", e);
+                }
+            };
+            fetchCOA();
+        }
+    }, [showAddVendorModal]);
     const [vendorFormData, setVendorFormData] = useState({
         name: '', nameArabic: '', companyName: '', companyLocation: '',
         billingName: '', billingPhone: '', billingAddress: '', billingCity: '', billingState: '', billingCountry: '', billingZipCode: '',
@@ -359,7 +383,7 @@ const GoodsReceipt = () => {
             const res = await vendorService.createVendor(payload);
             toast.success('Vendor created successfully!');
             setShowAddVendorModal(false);
-            
+
             // Refresh vendors list
             const companyId = GetCompanyId();
             const vendRes = await vendorService.getAllVendors(companyId);
@@ -375,7 +399,7 @@ const GoodsReceipt = () => {
             if (added && added.id) {
                 setVendorId(added.id.toString());
             }
-            
+
             // Reset vendor form
             setVendorFormData({
                 name: '', nameArabic: '', companyName: '', companyLocation: '',
@@ -475,8 +499,8 @@ const GoodsReceipt = () => {
                 unitName: uomFormData.unitName,
                 weightPerUnit: uomFormData.weightPerUnit,
                 uomType: uomFormData.uomType,
-                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
-                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
                     : null,
                 conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
                 companyId: parseInt(companyId)
@@ -527,7 +551,7 @@ const GoodsReceipt = () => {
             await productServiceFromServices.createProduct(payload);
             toast.success('Product created successfully!');
             setShowAddProductModal(false);
-            
+
             // Refresh products
             const prodRes = await productService.getProducts(companyId);
             if (prodRes?.success && Array.isArray(prodRes.data)) {
@@ -1483,11 +1507,11 @@ const GoodsReceipt = () => {
                                                 <div className="grn-meta-form">
                                                     <div className="grn-input-row">
                                                         <label>Challan No.</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={grnMeta.grnNumber} 
-                                                            onChange={e => setGrnMeta({ ...grnMeta, grnNumber: e.target.value })} 
-                                                            disabled={isViewMode} 
+                                                        <input
+                                                            type="text"
+                                                            value={grnMeta.grnNumber}
+                                                            onChange={e => setGrnMeta({ ...grnMeta, grnNumber: e.target.value })}
+                                                            disabled={isViewMode}
                                                         />
                                                     </div>
                                                     <div className="grn-input-row">
@@ -1871,88 +1895,211 @@ const GoodsReceipt = () => {
                                             />
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Address Information */}
-                                <div className="Vendors-form-section">
-                                    <h3 className="Vendors-section-subtitle">Billing Address</h3>
-                                    <div className="Vendors-form-row Vendors-three-col">
-                                        <div className="Vendors-form-group" style={{ flex: '2 1 0%' }}>
-                                            <label className="Vendors-form-label">Address Street / Area</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingAddress"
-                                                value={vendorFormData.billingAddress}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="Street address"
-                                            />
+                                    {/* File Uploads */}
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-profile-img">
+                                            <label className="Vendors-form-label">Profile Image</label>
+                                            {vendorFormData.profileImage ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                    <img
+                                                        src={vendorFormData.profileImage}
+                                                        alt="Profile"
+                                                        style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setVendorFormData(prev => ({ ...prev, profileImage: '' })); }}
+                                                        style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    >
+                                                        x Remove
+                                                    </button>
+                                                </div>
+                                            ) : null}
+                                            {!vendorFormData.profileImage && (
+                                                <>
+                                                    <input
+                                                        type="file"
+                                                        ref={profileImageRef}
+                                                        accept="image/jpeg,image/png,image/jpg"
+                                                        style={{ display: 'none' }}
+                                                        onChange={(e) => handleVendorFileUpload(e.target.files[0], 'profileImage', 'vendors')}
+                                                    />
+                                                    <div className="Vendors-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                                        <div className="Vendors-file-label">
+                                                            <span className="Vendors-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
+                                                            <span className="Vendors-file-name">{vendorFormData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="Vendors-file-note">JPEG, PNG or JPG (max 5MB)</span>
+                                                </>
+                                            )}
                                         </div>
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">City</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingCity"
-                                                value={vendorFormData.billingCity}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="City"
-                                            />
+                                        <div className="Vendors-form-group Vendors-any-file">
+                                            <label className="Vendors-form-label">Any File</label>
+                                            {vendorFormData.anyFile ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                    <a
+                                                        href={vendorFormData.anyFile}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
+                                                    >
+                                                        View File
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setVendorFormData(prev => ({ ...prev, anyFile: '' }))}
+                                                        style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    >
+                                                        x Remove
+                                                    </button>
+                                                </div>
+                                            ) : null}
+                                            {!vendorFormData.anyFile && (
+                                                <>
+                                                    <input
+                                                        type="file"
+                                                        ref={anyFileRef}
+                                                        style={{ display: 'none' }}
+                                                        onChange={(e) => handleVendorFileUpload(e.target.files[0], 'anyFile', 'vendors')}
+                                                    />
+                                                    <div className="Vendors-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                                        <div className="Vendors-file-label">
+                                                            <span className="Vendors-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
+                                                            <span className="Vendors-file-name">{vendorFormData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="Vendors-file-note">Any file type. Max 10MB</span>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
-                                    <div className="Vendors-form-row Vendors-three-col">
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">State</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingState"
-                                                value={vendorFormData.billingState}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="State"
-                                            />
-                                        </div>
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">Country</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingCountry"
-                                                value={vendorFormData.billingCountry}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="Country"
-                                            />
-                                        </div>
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">Zip Code</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingZipCode"
-                                                value={vendorFormData.billingZipCode}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="Zip code"
-                                            />
-                                        </div>
-                                    </div>
                                 </div>
 
-                                {/* Contact Info */}
+                                {/* Account Information */}
                                 <div className="Vendors-form-section">
-                                    <h3 className="Vendors-section-subtitle">Contact Info</h3>
+                                    <h3 className="Vendors-section-subtitle">Account Information</h3>
                                     <div className="Vendors-form-row Vendors-mixed-col">
                                         <div className="Vendors-form-group Vendors-half-width">
-                                            <label className="Vendors-form-label">Email Address <span className="Vendors-text-red">*</span></label>
-                                            <input
-                                                type="email"
-                                                className="Vendors-form-input"
-                                                name="email"
-                                                value={vendorFormData.email}
+                                            <label className="Vendors-form-label">Account Type <span className="Vendors-text-red">*</span></label>
+                                            <select
+                                                className="Vendors-form-select"
+                                                name="accountType"
+                                                value={vendorFormData.accountType}
                                                 onChange={handleVendorInputChange}
-                                                placeholder="Enter Email Address"
-                                                required
+                                            >
+                                                {accountTypes
+                                                    .flatMap(group => group.accounts)
+                                                    .filter(acc => acc.accountTypeName === 'Accounts Payable')
+                                                    .map((acc, j) => (
+                                                        <option key={j} value={acc.accountTypeId}>{acc.accountTypeName}</option>
+                                                    ))
+                                                }
+                                            </select>
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Balance Type</label>
+                                            <select
+                                                className="Vendors-form-select"
+                                                name="balanceType"
+                                                value={vendorFormData.balanceType}
+                                                onChange={handleVendorInputChange}
+                                            >
+                                                <option value="Credit">Credit</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <div className="Vendors-input-with-note">
+                                                <label className="Vendors-form-label">Account Name <span className="Vendors-text-red">*</span></label>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    value={vendorFormData.name}
+                                                    readOnly
+                                                    disabled
+                                                    style={{ backgroundColor: '#f3f4f6' }}
+                                                />
+                                                <span className="Vendors-input-note">This will auto-fill from selection above</span>
+                                            </div>
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Account Balance <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="number"
+                                                className="Vendors-form-input"
+                                                name="accountBalance"
+                                                value={vendorFormData.accountBalance}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="0.00"
+                                                min="0"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
                                             />
                                         </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Creation Date <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="date"
+                                                className="Vendors-form-input"
+                                                name="creationDate"
+                                                value={vendorFormData.creationDate}
+                                                onChange={handleVendorInputChange}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Bank Details */}
+                                <div className="Vendors-form-section">
+                                    <h3 className="Vendors-section-subtitle">Bank Details</h3>
+                                    <div className="Vendors-form-row Vendors-three-col">
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Bank Account Number</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="bankAccountNumber"
+                                                value={vendorFormData.bankAccountNumber}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter bank account number"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Bank IFSC</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="bankIFSC"
+                                                value={vendorFormData.bankIFSC}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter bank IFSC"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Bank Name & Branch</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="bankNameBranch"
+                                                value={vendorFormData.bankNameBranch}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter bank name & branch"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Contact & GST */}
+                                <div className="Vendors-form-section">
+                                    <h3 className="Vendors-section-subtitle">Contact & Status</h3>
+                                    <div className="Vendors-form-row Vendors-mixed-col">
                                         <div className="Vendors-form-group Vendors-half-width">
                                             <label className="Vendors-form-label">Phone <span className="Vendors-text-red">*</span></label>
                                             <input
@@ -1962,8 +2109,280 @@ const GoodsReceipt = () => {
                                                 value={vendorFormData.phone}
                                                 onChange={handleVendorInputChange}
                                                 placeholder="Enter Phone"
-                                                required
                                             />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Email <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="email"
+                                                className="Vendors-form-input"
+                                                name="email"
+                                                value={vendorFormData.email}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Email"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Credit Period (days)</label>
+                                            <input
+                                                type="number"
+                                                className="Vendors-form-input"
+                                                name="creditPeriod"
+                                                value={vendorFormData.creditPeriod}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter credit period"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="Vendors-form-row" style={{ alignItems: 'center' }}>
+                                        <label className="Vendors-switch" style={{ marginRight: '10px' }}>
+                                            <input
+                                                type="checkbox"
+                                                name="gstEnabled"
+                                                checked={vendorFormData.gstEnabled}
+                                                onChange={handleVendorInputChange}
+                                            />
+                                            <span className="Vendors-slider Vendors-round"></span>
+                                        </label>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Enable GST</span>
+
+                                        {vendorFormData.gstEnabled && (
+                                            <div className="Vendors-form-group" style={{ marginLeft: '2rem', flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    name="gstNumber"
+                                                    value={vendorFormData.gstNumber}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter GSTIN"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Addresses */}
+                                <div className="Vendors-form-section">
+                                    <div className="Vendors-form-row">
+                                        {/* Billing Address */}
+                                        <div style={{ flex: 1 }}>
+                                            <h3 className="Vendors-section-subtitle">Billing Address</h3>
+                                            <div className="Vendors-form-group">
+                                                <label className="Vendors-form-label">Name</label>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    name="billingName"
+                                                    value={vendorFormData.billingName}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter Name"
+                                                />
+                                            </div>
+                                            <div className="Vendors-form-group">
+                                                <label className="Vendors-form-label">Phone</label>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    name="billingPhone"
+                                                    value={vendorFormData.billingPhone}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter Phone"
+                                                />
+                                            </div>
+                                            <div className="Vendors-form-group">
+                                                <label className="Vendors-form-label">Address</label>
+                                                <textarea
+                                                    className="Vendors-form-textarea"
+                                                    name="billingAddress"
+                                                    value={vendorFormData.billingAddress}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter Address"
+                                                    rows="3"
+                                                />
+                                            </div>
+                                            <div className="Vendors-form-row">
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingCity"
+                                                        value={vendorFormData.billingCity}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="City"
+                                                    />
+                                                </div>
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingState"
+                                                        value={vendorFormData.billingState}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="State"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="Vendors-form-row">
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingCountry"
+                                                        value={vendorFormData.billingCountry}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="Country"
+                                                    />
+                                                </div>
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingZipCode"
+                                                        value={vendorFormData.billingZipCode}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="Zip Code"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Shipping Address */}
+                                        <div style={{ flex: 1, paddingLeft: '2rem', borderLeft: '1px solid #edf2f7' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                                <h3 className="Vendors-section-subtitle">Shipping Addresses</h3>
+                                                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            name="shippingSameAsBilling"
+                                                            checked={vendorFormData.shippingSameAsBilling}
+                                                            onChange={handleVendorInputChange}
+                                                            style={{ marginRight: '5px' }}
+                                                        />
+                                                        Apply Billing to First Shipping
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        className="Vendors-voucher-badge text-blue-600 border border-blue-600 bg-white hover:bg-blue-50"
+                                                        onClick={addVendorShippingAddress}
+                                                        style={{ padding: '2px 8px', fontSize: '0.8rem', cursor: 'pointer' }}
+                                                    >
+                                                        + Add More
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {vendorFormData.shippingSameAsBilling && (
+                                                <div style={{ marginBottom: '1.5rem', padding: '15px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#0369a1' }}>First Shipping Address (Same as Billing)</h4>
+                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#0c4a6e' }}>
+                                                        <strong>Address:</strong> {vendorFormData.billingAddress || 'N/A'}<br />
+                                                        {vendorFormData.billingCity && `${vendorFormData.billingCity}, `}{vendorFormData.billingState && `${vendorFormData.billingState}, `}{vendorFormData.billingZipCode}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {vendorFormData.shippingAddresses.length === 0 && !vendorFormData.shippingSameAsBilling && (
+                                                <div className="Vendors-form-group" style={{ padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                                    <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#64748b' }}>
+                                                        No shipping addresses added.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={addVendorShippingAddress}
+                                                        className="Vendors-voucher-badge text-blue-600"
+                                                    >
+                                                        Click here to add one
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {vendorFormData.shippingAddresses.map((addr, index) => (
+                                                <div key={index} style={{ marginBottom: '1.5rem', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', position: 'relative' }}>
+                                                    {vendorFormData.shippingAddresses.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeVendorShippingAddress(index)}
+                                                            style={{ position: 'absolute', top: '10px', right: '10px', color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    )}
+                                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#475569' }}>Shipping Address #{index + 1}</h4>
+
+                                                    <div className="Vendors-form-group">
+                                                        <label className="Vendors-form-label">Name</label>
+                                                        <input
+                                                            type="text"
+                                                            className="Vendors-form-input"
+                                                            value={addr.name}
+                                                            onChange={(e) => handleVendorShippingAddressChange(index, 'name', e.target.value)}
+                                                            placeholder="Enter Name"
+                                                        />
+                                                    </div>
+                                                    <div className="Vendors-form-group">
+                                                        <label className="Vendors-form-label">Phone</label>
+                                                        <input
+                                                            type="text"
+                                                            className="Vendors-form-input"
+                                                            value={addr.phone}
+                                                            onChange={(e) => handleVendorShippingAddressChange(index, 'phone', e.target.value)}
+                                                            placeholder="Enter Phone"
+                                                        />
+                                                    </div>
+                                                    <div className="Vendors-form-group">
+                                                        <label className="Vendors-form-label">Address</label>
+                                                        <textarea
+                                                            className="Vendors-form-textarea"
+                                                            value={addr.address}
+                                                            onChange={(e) => handleVendorShippingAddressChange(index, 'address', e.target.value)}
+                                                            placeholder="Enter Address"
+                                                            rows="2"
+                                                        />
+                                                    </div>
+                                                    <div className="Vendors-form-row">
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.city}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'city', e.target.value)}
+                                                                placeholder="City"
+                                                            />
+                                                        </div>
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.state}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'state', e.target.value)}
+                                                                placeholder="State"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="Vendors-form-row">
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.country}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'country', e.target.value)}
+                                                                placeholder="Country"
+                                                            />
+                                                        </div>
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.zipCode}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'zipCode', e.target.value)}
+                                                                placeholder="Zip Code"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
@@ -1980,7 +2399,7 @@ const GoodsReceipt = () => {
             {/* Add New Product Modal */}
             {showAddProductModal && (
                 <div className="Zirak-Inventory-modal-overlay" style={{ zIndex: 20000 }}>
-                    <div className="Zirak-Inventory-modal-content" style={{ textAlign: 'left' }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-modal" style={{ textAlign: 'left' }}>
                         <div className="Zirak-Inventory-modal-header">
                             <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
                             <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
@@ -2147,16 +2566,56 @@ const GoodsReceipt = () => {
                                     </div>
                                 </div>
 
-                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
-                                    <label className="Zirak-Inventory-form-label">Description</label>
+                                <div className="Zirak-Inventory-section-title-row">
+                                    <h3 className="Zirak-Inventory-section-title">Warehouse Information</h3>
+                                    <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={addProductWarehouseRow}>+ Add Warehouse</button>
+                                </div>
+
+                                <div className="Zirak-Inventory-warehouse-table-container">
+                                    <table className="Zirak-Inventory-warehouse-input-table">
+                                        <thead>
+                                            <tr>
+                                                <th>WAREHOUSE</th>
+                                                <th>QUANTITY</th>
+                                                <th>MINIMUM ORDER QUANTITY</th>
+                                                <th>INITIAL QUANTITY ON HAND</th>
+                                                <th>ACTION</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input Zirak-Inventory-mini"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            <option value="">Select Warehouse</option>
+                                                            {warehouses.map(wh => (
+                                                                <option key={wh.id} value={wh.id}>{wh.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.quantity} onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.minOrderQty} onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.initialQty} onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)} /></td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-remove" onClick={() => removeProductWarehouseRow(row.id)}>Remove</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group Zirak-Inventory-full-width" style={{ marginTop: '1rem' }}>
+                                    <label className="Zirak-Inventory-form-label">Item Description</label>
                                     <textarea
-                                        className="Zirak-Inventory-form-textarea"
-                                        name="description"
-                                        placeholder="Enter item description"
-                                        value={productFormData.description}
-                                        onChange={handleProductInputChange}
-                                        rows="2"
-                                    />
+                                        name="description" className="Zirak-Inventory-form-input Zirak-Inventory-textarea"
+                                        placeholder="Enter item description" rows={3}
+                                        value={productFormData.description} onChange={handleProductInputChange}
+                                    ></textarea>
                                 </div>
 
                                 <div className="Zirak-Inventory-form-grid" style={{ marginTop: '15px' }}>
@@ -2238,71 +2697,7 @@ const GoodsReceipt = () => {
                                     />
                                 </div>
 
-                                <div style={{ marginTop: '20px', borderTop: '1px solid #f3f4f6', paddingTop: '15px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                        <h3 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Warehouse Information</h3>
-                                        <button type="button" className="Zirak-Inventory-btn-add-warehouse" onClick={addProductWarehouseRow}>
-                                            + Add Warehouse
-                                        </button>
-                                    </div>
-                                    <table className="Zirak-Inventory-warehouse-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Warehouse</th>
-                                                <th>Quantity</th>
-                                                <th>Min Order Qty</th>
-                                                <th>Initial Qty</th>
-                                                <th>Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {productWarehouseRows.map((row) => (
-                                                <tr key={row.id}>
-                                                    <td>
-                                                        <select
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.warehouseId}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
-                                                        >
-                                                            {warehouses.map(w => (
-                                                                <option key={w.id} value={w.id}>{w.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.quantity}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.minOrderQty}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.initialQty}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <button type="button" className="Zirak-Inventory-btn-delete-row" onClick={() => removeProductWarehouseRow(row.id)}>
-                                                            Delete
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+
                             </div>
                             <div className="Zirak-Inventory-modal-footer">
                                 <button type="button" className="Zirak-Inventory-btn-cancel" onClick={() => setShowAddProductModal(false)}>Cancel</button>
@@ -2445,8 +2840,8 @@ const GoodsReceipt = () => {
                                                     style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
                                                 />
                                                 <span> {
-                                                    isNaN(uomFormData.baseUnitId) 
-                                                        ? uomFormData.baseUnitId 
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
                                                         : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
                                                 }</span>
                                             </div>

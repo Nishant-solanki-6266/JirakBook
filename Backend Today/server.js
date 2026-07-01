@@ -68,10 +68,30 @@ console.log(`Database Host Check: ${process.env.DATABASE_URL ? process.env.DATAB
 prisma.$connect()
     .then(() => {
         console.log('✅ Database connected successfully');
+        try {
+            const userProfile = process.env.USERPROFILE || process.env.HOME || 'C:\\Users\\nisha';
+            const logDir = path.join(userProfile, '.gemini', 'antigravity-ide', 'scratch');
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true });
+            }
+            fs.writeFileSync(path.join(logDir, 'db_conn.log'), 'SUCCESS: Database connected successfully');
+        } catch (e) {
+            console.warn('⚠️ Could not write to db_conn.log:', e.message);
+        }
     })
     .catch((err) => {
         console.error('❌ Database connection failed!');
-        console.error(err);
+        console.error(err.message);
+        try {
+            const userProfile = process.env.USERPROFILE || process.env.HOME || 'C:\\Users\\nisha';
+            const logDir = path.join(userProfile, '.gemini', 'antigravity-ide', 'scratch');
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true });
+            }
+            fs.writeFileSync(path.join(logDir, 'db_conn.log'), `FAILED: ${err.message}\n${err.stack}`);
+        } catch (e) {
+            console.warn('⚠️ Could not write to db_conn.log:', e.message);
+        }
     });
 
 process.on('uncaughtException', (err) => {

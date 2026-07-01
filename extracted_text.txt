@@ -1,0 +1,285 @@
+=========================================
+PICTURE 1 TEXT EXTRACT
+=========================================
+
+Step 1: Starting Point (Opening Balance)
+
+On January 1st, Customer A already owes you $1,000 from older invoices.
+
+Customer A Ledger:
+
+Date   | Description     | Debit (+) | Credit (-) | Balance (Dr.)
+------------------------------------------------------------------
+Jan 1  | Opening Balance | -         | -          | $1,000
+
+
+Step 2: Create a New Invoice for $500 (January 5th)
+
+You sell additional products to Customer A on credit for $500. The cost of these products to you is $300 (we'll include COGS/Inventory for completeness).
+
+Journal Entry #1 (The New Sale):
+
+Account                              | Debit | Credit
+------------------------------------------------------
+Accounts Receivable (Customer A)     | $500  |
+Sales Revenue                        |       | $500
+Cost of Goods Sold (COGS)            | $300  |
+Inventory                            |       | $300
+
+Customer A Ledger Update:
+
+Date   | Description            | Debit (+) | Credit (-) | Balance (Dr.)
+------------------------------------------------------------------------
+Jan 1  | Opening Balance        | -         | -          | $1,000
+Jan 5  | Invoice #102 (New Sale)| $500      | -          | $1,500
+
+
+=========================================
+PICTURE 2 TEXT EXTRACT
+=========================================
+
+Step 2: Create a New Invoice for $500 (January 5th)
+
+You sell additional products to Customer A on credit for $500. The cost of these products to you is $300 (we'll include COGS/Inventory for completeness).
+
+Journal Entry #1 (The New Sale):
+
+Account                              | Debit | Credit
+------------------------------------------------------
+Accounts Receivable (Customer A)     | $500  |
+Sales Revenue                        |       | $500
+Cost of Goods Sold (COGS)            | $300  |
+Inventory                            |       | $300
+
+Customer A Ledger Update:
+
+Date   | Description            | Debit (+) | Credit (-) | Balance (Dr.)
+------------------------------------------------------------------------
+Jan 1  | Opening Balance        | -         | -          | $1,000
+Jan 5  | Invoice #102 (New Sale)| $500      | -          | $1,500
+
+
+Step 3: Customer Pays the Full $500 Invoice (January 10th)
+
+Customer A sends you a check for exactly $500 to pay off Invoice #102.
+
+Journal Entry #2 (Receiving the Payment):
+
+Account                              | Debit | Credit
+------------------------------------------------------
+Cash                                 | $500  |
+Accounts Receivable (Customer A)     |       | $500
+
+Customer A Ledger Update:
+
+Date   | Description                       | Debit (+) | Credit (-) | Balance (Dr.)
+-----------------------------------------------------------------------------------
+Jan 1  | Opening Balance                   | -         | -          | $1,000
+Jan 5  | Invoice #102 (New Sale)           | $500      | -          | $1,500
+Jan 10 | Payment Received (for Invoice #102)| -         | $500       | $1,000
+
+Result: Their balance is back to $1,000. The new invoice is paid in full.
+
+
+=========================================
+PICTURE 3 TEXT EXTRACT
+=========================================
+
+Step 4: Customer Returns the Products from Invoice #102 (January 15th)
+
+Now the customer says, "We want to return everything from Invoice #102."
+Since they already paid that invoice, you cannot just reduce their Accounts Receivable balance (because it's already back to $1,000). You must **give them cash back** for $500.
+
+Journal Entry #3A (Refund the Revenue):
+
+Account                              | Debit | Credit
+------------------------------------------------------
+Sales Returns & Allowances           | $500  |
+Cash                                 |       | $500
+
+(To refund the customer for the returned products)
+
+Journal Entry #3B (Reverse the Cost - Put Inventory Back):
+
+Account                              | Debit | Credit
+------------------------------------------------------
+Inventory                            | $300  |
+Cost of Goods Sold (COGS)            |       | $300
+
+(To put the returned products back on the shelf)
+
+
+Step 5: The Final Customer Ledger Report
+
+Here is the tricky part: The cash refund does NOT touch the Accounts Receivable account because they no longer owe you that money (they already paid it).
+
+So, the customer's ledger balance stays at $1,000 and does not change from the refund.
+
+Final Customer A Ledger:
+
+Date   | Description                           | Debit (+) | Credit (-) | Balance (Dr.)
+---------------------------------------------------------------------------------------
+Jan 1  | Opening Balance                       | -         | -          | $1,000
+Jan 5  | Invoice #102 (New Sale)               | $500      | -          | $1,500
+Jan 10 | Payment Received (for Invoice #102)   | -         | $500       | $1,000
+Jan 15 | (Cash refund issued - Not recorded here)| -         | -          | $1,000
+
+Final Balance: Customer A still owes you $1,000 (their original opening balance). The new invoice is completely closed out—it was paid, then refunded in cash.
+
+
+Summary Table: All Journal Entries Together
+
+Date   | Account                          | Debit | Credit | Explanation
+---------------------------------------------------------------------------------------
+Jan 5  | Accounts Receivable (Customer A) | $500  |        | New sale on credit
+Jan 5  | Sales Revenue                    |       | $500   |
+Jan 5  | COGS                             | $300  |        | Record cost of sale
+Jan 5  | Inventory                        |       | $300   |
+Jan 10 | Cash                             | $500  |        | Customer pays the invoice
+Jan 10 | Accounts Receivable (Customer A) |       | $500   |
+Jan 15 | Sales Returns & Allowances       | $500  |        | Customer returns products
+Jan 15 | Cash                             |       | $500   | Cash refund issued
+Jan 15 | Inventory                        | $300  |        | Put products back on shelf
+Jan 15 | COGS                             |       | $300   | Reverse the cost
+
+
+=========================================
+PICTURE 4 TEXT EXTRACT
+=========================================
+
+The Most Important Takeaway
+
+When the return happens... | Your Journal Entry | Effect on Customer's A/R Balance
+--------------------------------------------------------------------------------------------------------
+Before the customer pays   | Debit Sales Returns   | Decreases their balance (they owe you less).
+the invoice                | Credit Accounts       |
+                           | Receivable            |
+--------------------------------------------------------------------------------------------------------
+After the customer pays    | Debit Sales Returns   | No effect on their balance (you already got paid,
+the invoice                | Credit Cash           | so you refund cash).
+
+
+What if they overpaid or had a credit balance?
+
+If Customer A had an opening balance of $0 and you issued the refund, their ledger would show a Credit Balance (meaning you owe them money). It would look like this:
+
+Date    | Description          | Debit (+) | Credit (-) | Balance
+---------------------------------------------------------------------------------------
+Jan 5   | Invoice #102         | $500      | -          | $500 Dr.
+Jan 10  | Payment              | -         | $500       | $0
+Jan 15  | Cash Refund (Return) | -         | $500       | $500 Cr. (You owe them)
+
+
+============================================================
+ADDITIONAL REFERENCE: WEBSITE ACCOUNTING WORKFLOW
+============================================================
+Zirak Books: Complete Website Accounting Workflow (Hinglish)
+
+Bhai, is website me jo standard account and transaction flows hote hain, unka systematic workflow niche diya gaya hai:
+
+1. CHART OF ACCOUNTS (Accounts Setup)
+------------------------------------
+* Naya business/company registration ke baad sabse pehle Default Chart of Accounts generate hota hai.
+* Isme paanch (5) main groups hote hain:
+  1. ASSETS: Aapki sampatti (Jaise Cash in Hand, Bank Accounts, Inventory Asset, Accounts Receivable).
+  2. LIABILITIES: Aapki denariyan (Jaise Accounts Payable, Taxes Payable).
+  3. EQUITY: Company ki capital aur earnings (Owner Investment, Retained Earnings).
+  4. INCOME: Sales and Revenue accounts.
+  5. EXPENSES: Cost of Goods Sold, Rent, Salaries, Electricity, etc.
+* Double-entry bookkeeping ke anusar jab bhi koi transaction hota hai, inhi accounts me Debit (Dr) aur Credit (Cr) record hota hai.
+
+2. SALES WORKFLOW (Udhari/Sales Process)
+------------------------------------
+* Step A: Sales Quotation
+  - Customer ko rate batane ke liye Quotation (Quotation) banayein. Iska accounts par koi asar nahi padta.
+* Step B: Sales Order (SO)
+  - Jab client order confirm kare, tab Sales Order banayein. Agar configuration on ho, to ye stock reserve kar leta hai.
+* Step C: Delivery Challan (Challan)
+  - Warehouse se physical inventory deliver karne ke liye Challan issue karein.
+* Step D: Sales Invoice (Direct or from Challan/SO)
+  - Tax Invoice banayein. 
+  - Ledger Effect: 
+    * Debit (Dr): Customer Account (Receivable) - Custom ka balance badhta hai.
+    * Credit (Cr): Sales Income Account - Revenue book hota hai.
+    * Credit (Cr): Tax Payable - Tax liability book hoti hai.
+  - COGS Effect:
+    * Debit (Dr): Cost of Goods Sold (Expense) - Kharid kimat badhti hai.
+    * Credit (Cr): Inventory Asset - Warehouse se stock ki value kam hoti hai.
+* Step E: Customer Receipt (Receipt)
+  - Jab customer payment kare (Cash, UPI, Bank Transfer).
+  - Ledger Effect:
+    * Debit (Dr): Cash/Bank Account (Asset) - Bank/Cash balance badhta hai.
+    * Credit (Cr): Customer Account (Receivable) - Customer ka outstanding balance kam hota hai.
+
+3. PURCHASE WORKFLOW (Udhari/Purchase Process)
+------------------------------------
+* Step A: Purchase Order (PO)
+  - Vendor ko goods order karne ke liye PO bhejein.
+* Step B: Goods Receipt Note (GRN)
+  - Warehouse me physical stock receive karein.
+* Step C: Purchase Bill (Bill)
+  - Vendor ka invoice record karein.
+  - Ledger Effect:
+    * Debit (Dr): Inventory Asset (Goods ke liye) / Purchases (Service ke liye) - Stock value badhti hai.
+    * Debit (Dr): Tax Input (Asset) - Tax input credit badhta hai.
+    * Credit (Cr): Vendor Account (Payable) - Vendor ka dena (liability) badhta hai.
+* Step D: Vendor Payment (Payment)
+  - Vendor ka bill clear karne ke liye payment karein.
+  - Ledger Effect:
+    * Debit (Dr): Vendor Account (Payable) - Vendor ka outstanding balance kam hota hai.
+    * Credit (Cr): Cash/Bank Account (Asset) - Humare bank/cash se paisa jata hai.
+
+4. POS WORKFLOW (Nakhad Retail Sales)
+------------------------------------
+* Step A: POS Sale Panel
+  - Item select karein, payment mode (Cash, UPI, Card) select karein aur pay karein.
+* Step B: Double-Entry Posting
+  - Ledger Effect:
+    * Debit (Dr): Walk-in Customer Ledger (Asset) - Temporary custom balance badhta hai.
+    * Credit (Cr): Sales Income (POS) - Revenue book hota hai.
+    * Credit (Cr): Tax Payable - Tax liability book hoti hai.
+  - POS Receipt:
+    * Debit (Dr): Cash/Bank Account selected - Cashier/Register balance badhta hai.
+    * Credit (Cr): Walk-in Customer Ledger - Walk-in balance clear hota hai.
+  - COGS (Inventory consumption):
+    * Debit (Dr): Cost of Goods Sold (Expense) - Inventory consumption cost book hoti hai.
+    * Credit (Cr): Inventory Asset - Stock kam hota hai.
+
+5. REPORTS & DASHBOARD (Natija/Result dekhna)
+------------------------------------
+* Sub accounting entries database ki 'transaction' table me real-time jama hoti hain.
+* In transaction entries ke sum se live reports banti hain:
+  1. Profit & Loss: Sales Income me se Cost of Goods Sold aur baki Expenses ko minus karke Net Profit nikala jata hai.
+  2. Balance Sheet: Total Assets (Cash + Bank + Inventory + Receivables) ka total, Liabilities + Equity ke barabar match hota hai.
+  3. Trial Balance: Subhi Ledgers ke total Debit aur Credit balances ka milan hota hai.
+
+
+============================================================
+ADDITIONAL REFERENCE: BOOKKEEPER SUMMARY
+============================================================
+Zirak Books: Financial Figures Aur Reports Ki Bookkeeping Summary
+
+Bhai, aapki website ke functions (User create, invoices create, payments) chalne me koi dikkat nahi hai. Lekin accounting data and reports ke aakhde (figures) galat ban rahe hain. 
+
+Niche 3 badi dikkat (problems) simple Hinglish me likhi hain:
+
+1. Rent Expense, Asset (Cash) ban gaya hai:
+------------------------------------
+* Dikkat kya hai: Aapne office rent ke liye 'Office Rent Expense 2026' naam ka account (ledger) banaya hai. Lekin database me ye ledger 'Expenses' (kharch) group me jaane ke bajaye 'Assets' (Cash/Bank Asset) group me chala gaya hai.
+* Aap par asar: Jab aap rent pay karenge aur is ledger me entry dalenge, to wo Profit & Loss report me kharch (expense) ki tarah nahi dikhega. Wo balance sheet me Cash ki tarah dikhega. Isse aapke kharche reports me kam dikhenge aur net profit jhootha badha hua dikhega.
+
+2. POS Sales ka cost galat ledger me ja raha hai:
+------------------------------------
+* Dikkat kya hai: Jab aap POS (Point of Sale) screen se koi item bechte hain, to us item ki cost (kharid kimat/COGS) automatic 'Cost of Goods Sold' ledger me jani chahiye. Lekin backend code me ek mistake ki wajah se ye cost 'Point Of Sale' naam ke ledger me ja rahi hai (jo database me Expenses group me bana hua hai).
+* Aap par asar: Iski wajah se aapka Gross Profit (sakal labh) reports me galat (bohot badha hua) dikh raha hai aur operating expenses bhi galat aa rahe hain.
+
+3. Share Capital aur Retained Earnings 'Liabilities' ban gaya hai:
+------------------------------------
+* Dikkat kya hai: Company ki jo capital (punji) hoti hai wo 'Equity' group me honi chahiye. Lekin code me mistake ki wajah se use 'Liabilities' (karz) group me map kar diya gaya hai.
+* Aap par asar: Balance sheet me aapka khud ka lagaya hua paisa (Capital) bank ya kisi aur ke karz (Liability) ki tarah show ho raha hai, jo bookkeeping ke hisab se bilkul galat hai.
+
+Solution kya hai?
+-----------------
+Hum isse 2 simple steps me fix kar sakte hain:
+1. Code Fix: Hum posController.js aur chartOfAccountsService.js me code ko correct kar denge taaki aage se data sahi jagah jaye.
+2. Database Clean: Database me run karke in teen ledgers (Office Rent Expense, Point Of Sale, and Share Capital) ko unki sahi accounting category me move kar denge.

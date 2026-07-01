@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useContext, useMemo } from 'react';
 import { getStatusStyle } from '../../../../utils/statusStyle';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CompanyContext } from '../../../../context/CompanyContext';
@@ -32,6 +32,8 @@ import productServiceFromServices from '../../../../services/productService';
 import categoryService from '../../../../services/categoryService';
 import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
 import { Upload, Loader2 } from 'lucide-react';
+import chartOfAccountsService from '../../../../services/chartOfAccountsService';
+
 
 const PurchaseBill = () => {
     const { companySettings, formatCurrency, getTableHeader, getInvoiceLabel, getDocumentTitle } = useContext(CompanyContext);
@@ -60,7 +62,7 @@ const PurchaseBill = () => {
 
     const formatDocCurrency = (amount, currencyCode) => {
         const docCurrency = currencyCode || selectedCurrency || companySettings?.currency || 'USD';
-        
+
         const localeMap = {
             'INR': 'en-IN',
             'AED': 'ar-AE',
@@ -121,6 +123,28 @@ const PurchaseBill = () => {
 
     // Inline Modals States
     const [showAddVendorModal, setShowAddVendorModal] = useState(false);
+    const [accountTypes, setAccountTypes] = useState([]);
+
+    useEffect(() => {
+        if (showAddVendorModal) {
+            const fetchCOA = async () => {
+                try {
+                    const companyId = GetCompanyId();
+                    const res = await chartOfAccountsService.getAccountTypes(companyId);
+                    if (res?.success && Array.isArray(res.data)) {
+                        setAccountTypes(res.data);
+                    } else if (res?.data && Array.isArray(res.data)) {
+                        setAccountTypes(res.data);
+                    } else if (Array.isArray(res)) {
+                        setAccountTypes(res);
+                    }
+                } catch (e) {
+                    console.error("Error fetching account types", e);
+                }
+            };
+            fetchCOA();
+        }
+    }, [showAddVendorModal]);
     const [vendorFormData, setVendorFormData] = useState({
         name: '', nameArabic: '', companyName: '', companyLocation: '',
         billingName: '', billingPhone: '', billingAddress: '', billingCity: '', billingState: '', billingCountry: '', billingZipCode: '',
@@ -178,6 +202,7 @@ const PurchaseBill = () => {
     const [selectedSourceType, setSelectedSourceType] = useState(null);
     const [sourceDocs, setSourceDocs] = useState([]);
     const [linkedSource, setLinkedSource] = useState(null);
+    const [creationMode, setCreationMode] = useState('direct'); // 'direct' | 'from_po' | 'from_grn'
     const [allUoms, setAllUoms] = useState([]);
 
     // Form State
@@ -566,7 +591,7 @@ const PurchaseBill = () => {
             const res = await vendorService.createVendor(payload);
             toast.success('Vendor created successfully!');
             setShowAddVendorModal(false);
-            
+
             // Refresh vendors list
             const companyId = GetCompanyId();
             const vendRes = await vendorService.getAllVendors(companyId);
@@ -582,7 +607,7 @@ const PurchaseBill = () => {
             if (added && added.id) {
                 setVendorId(added.id.toString());
             }
-            
+
             // Reset vendor form
             setVendorFormData({
                 name: '', nameArabic: '', companyName: '', companyLocation: '',
@@ -682,8 +707,8 @@ const PurchaseBill = () => {
                 unitName: uomFormData.unitName,
                 weightPerUnit: uomFormData.weightPerUnit,
                 uomType: uomFormData.uomType,
-                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
-                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
                     : null,
                 conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
                 companyId: parseInt(companyId)
@@ -734,7 +759,7 @@ const PurchaseBill = () => {
             await productServiceFromServices.createProduct(payload);
             toast.success('Product created successfully!');
             setShowAddProductModal(false);
-            
+
             // Refresh products
             const prodRes = await productService.getProducts(companyId);
             if (prodRes?.success && Array.isArray(prodRes.data)) {
@@ -867,7 +892,7 @@ const PurchaseBill = () => {
                     availableAdvance
                 };
             }).filter(p => p.availableAdvance > 0.01);
-            
+
             setAvailablePayments(payments);
             setAdjustments([]);
         } catch (error) {
@@ -886,24 +911,24 @@ const PurchaseBill = () => {
             const paymentsRes = await purchasePaymentService.getPayments(companyId, { vendorId: vId });
             const billRes = await purchaseBillService.getBillById(billId, companyId);
             const currentAllocations = billRes.data?.allocations || [];
-            
+
             const payments = (paymentsRes || []).map(p => {
                 const otherAllocations = p.allocations?.filter(a => a.purchaseBillId !== billId) || [];
                 const otherAllocatedSum = otherAllocations.reduce((sum, a) => sum + a.amount, 0) || 0;
                 const availableAdvance = p.amount - otherAllocatedSum;
-                
+
                 const currentAlloc = currentAllocations.find(a => a.paymentId === p.id);
                 const currentAllocAmount = currentAlloc ? currentAlloc.amount : 0;
-                
+
                 return {
                     ...p,
                     availableAdvance,
                     currentAllocAmount
                 };
             }).filter(p => p.availableAdvance > 0.01 || p.currentAllocAmount > 0);
-            
+
             setAvailablePayments(payments);
-            
+
             const initialAdjustments = currentAllocations.map(a => {
                 const pObj = paymentsRes.find(p => p.id === a.paymentId);
                 return {
@@ -1446,8 +1471,8 @@ const PurchaseBill = () => {
                         const newUom = allUoms.find(u => u.id === newUomId) || prod.uom || prod.purchaseUom || prod.salesUom;
                         const basePrice = prod.purchasePrice || 0;
                         const multiplier = newUom?.uomType === 'Compound' ? parseFloat(newUom.conversionRate) || 1 : 1;
-                        updatedItem = { 
-                            ...item, 
+                        updatedItem = {
+                            ...item,
                             uomId: newUomId,
                             rate: basePrice * multiplier
                         };
@@ -1535,12 +1560,12 @@ const PurchaseBill = () => {
                     </button>
                     <div className="PBILL-view-actions">
                         {viewBill.balanceAmount > 0 && hasPermission('create purchase payment') && !viewBill.isStatement && (
-                            <button 
-                                className="PBILL-btn-add" 
+                            <button
+                                className="PBILL-btn-add"
                                 onClick={() => handleMakePayment(viewBill)}
-                                style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
                                     gap: '6px',
                                     backgroundColor: '#16a34a',
                                     color: 'white',
@@ -1561,283 +1586,283 @@ const PurchaseBill = () => {
                 </div>
 
                 <div className="PBILL-view-content-pane printable-area">
-                        <div
-                            className={`invoice-preview-container template-${(companySettings?.invoiceTemplate || companyDetails.template || 'New York').toLowerCase().replace(' ', '').replace('invoice-', '')}`}
-                            id="invoice-print-content"
-                            style={{ 
-                                '--header-bg': companySettings?.invoiceColor || companyDetails.color || '#004aad',
-                                '--header-text': (() => {
-                                    const hex = (companySettings?.invoiceColor || companyDetails.color || '#004aad').replace('#', '');
-                                    const r = parseInt(hex.substr(0, 2), 16);
-                                    const g = parseInt(hex.substr(2, 2), 16);
-                                    const b = parseInt(hex.substr(4, 2), 16);
-                                    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-                                    return (yiq >= 150) ? '#1e293b' : '#ffffff';
-                                })()
-                            }}
-                        >
-                            {/* Header Section */}
-                            {getInvoiceLabel('showHeader') !== false && (
-                                <div className="invoice-header-wrapper">
-                                    <div className="invoice-preview-header">
-                                        <div className="invoice-header-left">
-                                            {companySettings?.invoiceLogo || companyDetails.logo ? (
-                                                <img 
-                                                    src={companySettings?.invoiceLogo || (companyDetails.logo.startsWith('http') ? companyDetails.logo : `${BASE_URL}/${companyDetails.logo.replace(/\\/g, '/')}`)} 
-                                                    alt="Company Logo" 
-                                                    className="invoice-logo-large" 
-                                                />
+                    <div
+                        className={`invoice-preview-container template-${(companySettings?.invoiceTemplate || companyDetails.template || 'New York').toLowerCase().replace(' ', '').replace('invoice-', '')}`}
+                        id="invoice-print-content"
+                        style={{
+                            '--header-bg': companySettings?.invoiceColor || companyDetails.color || '#004aad',
+                            '--header-text': (() => {
+                                const hex = (companySettings?.invoiceColor || companyDetails.color || '#004aad').replace('#', '');
+                                const r = parseInt(hex.substr(0, 2), 16);
+                                const g = parseInt(hex.substr(2, 2), 16);
+                                const b = parseInt(hex.substr(4, 2), 16);
+                                const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+                                return (yiq >= 150) ? '#1e293b' : '#ffffff';
+                            })()
+                        }}
+                    >
+                        {/* Header Section */}
+                        {getInvoiceLabel('showHeader') !== false && (
+                            <div className="invoice-header-wrapper">
+                                <div className="invoice-preview-header">
+                                    <div className="invoice-header-left">
+                                        {companySettings?.invoiceLogo || companyDetails.logo ? (
+                                            <img
+                                                src={companySettings?.invoiceLogo || (companyDetails.logo.startsWith('http') ? companyDetails.logo : `${BASE_URL}/${companyDetails.logo.replace(/\\/g, '/')}`)}
+                                                alt="Company Logo"
+                                                className="invoice-logo-large"
+                                            />
+                                        ) : (
+                                            <h2 style={{ color: companySettings?.invoiceColor || companyDetails.color, margin: 0, textTransform: 'uppercase' }}>{companyDetails.name}</h2>
+                                        )}
+
+                                        <div className="invoice-company-details">
+                                            <strong>{companyDetails.name}</strong><br />
+                                            {companyDetails.email}<br />
+                                            {companyDetails.phone}<br />
+                                            {companyDetails.address}
+                                        </div>
+                                    </div>
+                                    <div className="invoice-header-right">
+                                        <div className="invoice-title-large">{viewBill.isStatement ? 'VENDOR STATEMENT' : getDocumentTitle('purchasebill')}</div>
+                                        <div className="invoice-meta-info">
+                                            {viewBill.isStatement ? (
+                                                <>
+                                                    <div className="invoice-meta-row">
+                                                        <span className="invoice-label">Vendor:</span> {viewBill.vendor?.name}
+                                                    </div>
+                                                    <div className="invoice-meta-row">
+                                                        <span className="invoice-label">Total Bills:</span> {viewBill.bills.length}
+                                                    </div>
+                                                    <div className="invoice-meta-row">
+                                                        <span className="invoice-label">As of:</span> {new Date().toLocaleDateString()}
+                                                    </div>
+                                                </>
                                             ) : (
-                                                <h2 style={{ color: companySettings?.invoiceColor || companyDetails.color, margin: 0, textTransform: 'uppercase' }}>{companyDetails.name}</h2>
-                                            )}
-
-                                            <div className="invoice-company-details">
-                                                <strong>{companyDetails.name}</strong><br />
-                                                {companyDetails.email}<br />
-                                                {companyDetails.phone}<br />
-                                                {companyDetails.address}
-                                            </div>
-                                        </div>
-                                         <div className="invoice-header-right">
-                                            <div className="invoice-title-large">{viewBill.isStatement ? 'VENDOR STATEMENT' : getDocumentTitle('purchasebill')}</div>
-                                            <div className="invoice-meta-info">
-                                                {viewBill.isStatement ? (
-                                                    <>
-                                                        <div className="invoice-meta-row">
-                                                            <span className="invoice-label">Vendor:</span> {viewBill.vendor?.name}
-                                                        </div>
-                                                        <div className="invoice-meta-row">
-                                                            <span className="invoice-label">Total Bills:</span> {viewBill.bills.length}
-                                                        </div>
-                                                        <div className="invoice-meta-row">
-                                                            <span className="invoice-label">As of:</span> {new Date().toLocaleDateString()}
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="invoice-meta-row">
-                                                            <span className="invoice-label">Bill No:</span> {viewBill.billNumber}
-                                                        </div>
-                                                        <div className="invoice-meta-row">
-                                                            <span className="invoice-label">Date:</span> {new Date(viewBill.date).toLocaleDateString()}
-                                                        </div>
-                                                        <div className="invoice-meta-row">
-                                                            <span className="invoice-label">{getInvoiceLabel('dueDate')}</span> {viewBill.dueDate ? new Date(viewBill.dueDate).toLocaleDateString() : 'N/A'}
-                                                        </div>
-                                                        {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
-                                                            <>
-                                                                <div className="invoice-meta-row">
-                                                                    <span className="invoice-label">Currency:</span> {viewBill.currency}
-                                                                </div>
-                                                                <div className="invoice-meta-row">
-                                                                    <span className="invoice-label">Ex. Rate:</span> 1 {viewBill.currency} = {viewBill.exchangeRate || 1.0} {companySettings?.currency || 'INR'}
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                            {companyDetails.showQrCode && (
-                                                <div className="invoice-qr-box" style={{ 
-                                                    marginTop: '15px', 
-                                                    display: 'flex', 
-                                                    justifyContent: 'flex-end',
-                                                    visibility: 'visible',
-                                                    opacity: 1
-                                                }}>
-                                                    <img 
-                                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}/view/bill/${viewBill.id}`)}`} 
-                                                        alt="QR" 
-                                                        style={{ width: '100px', height: '100px', display: 'block' }}
-                                                    />
-                                                </div>
+                                                <>
+                                                    <div className="invoice-meta-row">
+                                                        <span className="invoice-label">Bill No:</span> {viewBill.billNumber}
+                                                    </div>
+                                                    <div className="invoice-meta-row">
+                                                        <span className="invoice-label">Date:</span> {new Date(viewBill.date).toLocaleDateString()}
+                                                    </div>
+                                                    <div className="invoice-meta-row">
+                                                        <span className="invoice-label">{getInvoiceLabel('dueDate')}</span> {viewBill.dueDate ? new Date(viewBill.dueDate).toLocaleDateString() : 'N/A'}
+                                                    </div>
+                                                    {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
+                                                        <>
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">Currency:</span> {viewBill.currency}
+                                                            </div>
+                                                            <div className="invoice-meta-row">
+                                                                <span className="invoice-label">Ex. Rate:</span> 1 {viewBill.currency} = {viewBill.exchangeRate || 1.0} {companySettings?.currency || 'INR'}
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
-                                    </div>
-                                </div>
-                            )}
-
-                             {/* Addresses Section */}
-                            <div className="invoice-addresses">
-                                <div className="invoice-bill-to">
-                                    <div className="invoice-section-header">{getInvoiceLabel('billTo')}</div>
-                                    <div className="font-bold">{viewBill.billingName || viewBill.vendor?.name || 'N/A'}</div>
-                                    <div className="invoice-company-details">
-                                        {viewBill.billingAddress || viewBill.vendor?.billingAddress || 'N/A'}<br />
-                                        {[viewBill.billingCity || viewBill.vendor?.city, viewBill.billingState || viewBill.vendor?.state, viewBill.billingZipCode || viewBill.vendor?.zipCode].filter(Boolean).join(', ')}
-                                    </div>
-                                </div>
-                                <div className="invoice-ship-to" style={{ textAlign: 'right' }}>
-                                    <div className="invoice-section-header">{getInvoiceLabel('shipTo')}</div>
-                                    <div className="font-bold">{viewBill.shippingName || viewBill.vendor?.name || 'N/A'}</div>
-                                    <div className="invoice-company-details">
-                                        {viewBill.shippingAddress || viewBill.vendor?.shippingAddress || viewBill.vendor?.billingAddress}<br />
-                                        {[viewBill.shippingCity || viewBill.vendor?.city, viewBill.shippingState || viewBill.vendor?.state, viewBill.shippingZipCode || viewBill.vendor?.zipCode].filter(Boolean).join(', ')}
+                                        {companyDetails.showQrCode && (
+                                            <div className="invoice-qr-box" style={{
+                                                marginTop: '15px',
+                                                display: 'flex',
+                                                justifyContent: 'flex-end',
+                                                visibility: 'visible',
+                                                opacity: 1
+                                            }}>
+                                                <img
+                                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`${window.location.origin}/view/bill/${viewBill.id}`)}`}
+                                                    alt="QR"
+                                                    style={{ width: '100px', height: '100px', display: 'block' }}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
+                        )}
 
-                            {/* Custom Fields Print View */}
-                            {(() => {
-                                let customFieldVals = {};
-                                if (viewBill?.customFields) {
-                                    try {
-                                        customFieldVals = typeof viewBill.customFields === 'string'
-                                            ? JSON.parse(viewBill.customFields)
-                                            : viewBill.customFields;
-                                    } catch (e) {
-                                        console.error('Error parsing bill custom fields for view:', e);
-                                    }
+                        {/* Addresses Section */}
+                        <div className="invoice-addresses">
+                            <div className="invoice-bill-to">
+                                <div className="invoice-section-header">{getInvoiceLabel('billTo')}</div>
+                                <div className="font-bold">{viewBill.billingName || viewBill.vendor?.name || 'N/A'}</div>
+                                <div className="invoice-company-details">
+                                    {viewBill.billingAddress || viewBill.vendor?.billingAddress || 'N/A'}<br />
+                                    {[viewBill.billingCity || viewBill.vendor?.city, viewBill.billingState || viewBill.vendor?.state, viewBill.billingZipCode || viewBill.vendor?.zipCode].filter(Boolean).join(', ')}
+                                </div>
+                            </div>
+                            <div className="invoice-ship-to" style={{ textAlign: 'right' }}>
+                                <div className="invoice-section-header">{getInvoiceLabel('shipTo')}</div>
+                                <div className="font-bold">{viewBill.shippingName || viewBill.vendor?.name || 'N/A'}</div>
+                                <div className="invoice-company-details">
+                                    {viewBill.shippingAddress || viewBill.vendor?.shippingAddress || viewBill.vendor?.billingAddress}<br />
+                                    {[viewBill.shippingCity || viewBill.vendor?.city, viewBill.shippingState || viewBill.vendor?.state, viewBill.shippingZipCode || viewBill.vendor?.zipCode].filter(Boolean).join(', ')}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Custom Fields Print View */}
+                        {(() => {
+                            let customFieldVals = {};
+                            if (viewBill?.customFields) {
+                                try {
+                                    customFieldVals = typeof viewBill.customFields === 'string'
+                                        ? JSON.parse(viewBill.customFields)
+                                        : viewBill.customFields;
+                                } catch (e) {
+                                    console.error('Error parsing bill custom fields for view:', e);
                                 }
-                                const fieldsList = getCustomFieldsForType('purchasebill');
-                                const activeCustomFields = fieldsList.filter(f => customFieldVals[f.label]);
-                                if (activeCustomFields.length === 0) return null;
-                                return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', margin: '20px 0', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', textAlign: 'left' }}>
-                                        {activeCustomFields.map(field => (
-                                            <div key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>{field.label}</span>
-                                                <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#1e293b', marginTop: '2px' }}>{customFieldVals[field.label]}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                );
-                            })()}
-
-                             {/* Items Table / Bills Table */}
-                            {viewBill.isStatement ? (
-                                <table className="invoice-table-preview">
-                                    <thead>
-                                        <tr>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>Bill No</th>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>Date</th>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('item', 'Item').toUpperCase()}</th>
-                                            {getInvoiceLabel('showWarehouse') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
-                                            {getInvoiceLabel('showQty') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>{getTableHeader('quantity', 'Qty').toUpperCase()}</th>}
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>Bill Total</th>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>Paid</th>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>Due</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {viewBill.bills.map((bill, bIdx) => {
-                                            const items = bill.purchasebillitem || bill.items || [];
-                                            return items.map((item, iIdx) => (
-                                                <tr key={`${bIdx}-${iIdx}`}>
-                                                    <td style={{ fontWeight: iIdx === 0 ? 600 : 400, color: iIdx === 0 ? 'inherit' : '#94a3b8' }}>
-                                                        {iIdx === 0 ? bill.billNumber : ''}
-                                                    </td>
-                                                    <td style={{ color: iIdx === 0 ? 'inherit' : '#94a3b8' }}>
-                                                        {iIdx === 0 ? new Date(bill.date).toLocaleDateString() : ''}
-                                                    </td>
-                                                    <td style={{ fontWeight: 500 }}>{item.product?.name || 'N/A'}</td>
-                                                    {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || 'N/A'}</td>}
-                                                    {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
-                                                    <td style={{ textAlign: 'right' }}>
-                                                        {iIdx === 0 ? formatCurrency(bill.totalAmount) : ''}
-                                                    </td>
-                                                    <td style={{ textAlign: 'right' }}>
-                                                        {iIdx === 0 ? formatCurrency(bill.totalAmount - bill.balanceAmount) : ''}
-                                                    </td>
-                                                    <td style={{ textAlign: 'right', fontWeight: iIdx === 0 ? 600 : 400 }}>
-                                                        {iIdx === 0 ? formatCurrency(bill.balanceAmount) : ''}
-                                                    </td>
-                                                </tr>
-                                            ));
-                                        })}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                <table className="invoice-table-preview">
-                                    <thead>
-                                        <tr>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('item', 'Item Description').toUpperCase()}</th>
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>HSN/SKU</th>
-                                            {getInvoiceLabel('showWarehouse') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
-                                            {getInvoiceLabel('showQty') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>{getTableHeader('quantity', 'Qty').toUpperCase()}</th>}
-                                            {getInvoiceLabel('showUom') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>UOM</th>}
-                                            {getInvoiceLabel('showRate') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('rate', 'Rate').toUpperCase()}</th>}
-                                            {getInvoiceLabel('showTax') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('tax', 'Tax %').toUpperCase()}</th>}
-                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('price', 'Amount').toUpperCase()}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(viewBill.purchasebillitem || viewBill.items || []).map((item, idx) => (
-                                            <tr key={idx}>
-                                                <td>
-                                                    <div style={{ fontWeight: 600 }}>{item.product?.name || 'Unknown Product'}</div>
-                                                    {item.description && <div style={{ fontSize: '11px', color: '#64748b' }}>{item.description}</div>}
-                                                </td>
-                                                <td>{item.product?.hsnCode || item.product?.sku || '-'}</td>
-                                                {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || '-'}</td>}
-                                                {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
-                                                {getInvoiceLabel('showUom') !== false && <td style={{ textAlign: 'center' }}>{item.uom?.unitName || allUoms.find(u => u.id === item.uomId)?.unitName || ''}</td>}
-                                                {getInvoiceLabel('showRate') !== false && <td style={{ textAlign: 'right' }}>{formatDocCurrency(item.rate, viewBill.currency)}</td>}
-                                                {getInvoiceLabel('showTax') !== false && <td style={{ textAlign: 'right' }}>{item.taxRate}%</td>}
-                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatDocCurrency(item.amount, viewBill.currency)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-
-                             {/* Totals Section */}
-                            <div className="invoice-total-section">
-                                <div className="invoice-totals">
-                                    {viewBill.isStatement ? (
-                                        <>
-                                            <div className="invoice-total-row">
-                                                <span className="invoice-label">Total Bill Amount:</span>
-                                                <span>{formatCurrency(viewBill.totalBillAmount)}</span>
-                                            </div>
-                                            <div className="invoice-final-total">
-                                                <span>Total Amount Paid:</span>
-                                                <span style={{ color: '#16a34a' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
-                                            </div>
-                                            <div className="invoice-final-total" style={{ borderTop: '1px solid #ef4444', marginTop: '5px', paddingTop: '5px', color: '#ef4444' }}>
-                                                <span>Total Balance Due:</span>
-                                                <span>{formatCurrency(viewBill.balanceAmount)}</span>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="invoice-total-row">
-                                                <span className="invoice-label">{getInvoiceLabel('subTotal')}:</span>
-                                                <span>{formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}</span>
-                                            </div>
-                                            <div className="invoice-total-row">
-                                                <span className="invoice-label">Discount:</span>
-                                                <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
-                                            </div>
-                                            <div className="invoice-total-row">
-                                                <span className="invoice-label">{getInvoiceLabel('tax')}:</span>
-                                                <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
-                                            </div>
-                                            <div className="invoice-final-total">
-                                                <span>{getInvoiceLabel('total')}:</span>
-                                                <span>{formatDocCurrency(viewBill.totalAmount, viewBill.currency)}</span>
-                                            </div>
-                                            <div className="invoice-total-row" style={{ marginTop: '5px', fontWeight: '600', color: '#16a34a' }}>
-                                                <span className="invoice-label">Amount Paid:</span>
-                                                <span>{formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}</span>
-                                            </div>
-                                            <div className="invoice-total-row" style={{ borderTop: '1px solid #e2e8f0', marginTop: '5px', paddingTop: '5px', fontWeight: '700', color: '#ef4444' }}>
-                                                <span className="invoice-label">Balance Due:</span>
-                                                <span>{formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}</span>
-                                            </div>
-                                            {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
-                                                <div className="invoice-total-row" style={{ borderTop: '1px dashed #cbd5e1', marginTop: '8px', paddingTop: '8px', fontWeight: '700', color: '#475569' }}>
-                                                    <span className="invoice-label">Base Total ({companySettings?.currency || 'INR'}):</span>
-                                                    <span>{formatDocCurrency((viewBill.totalAmount || 0) * (viewBill.exchangeRate || 1.0), companySettings?.currency || 'INR')}</span>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
+                            }
+                            const fieldsList = getCustomFieldsForType('purchasebill');
+                            const activeCustomFields = fieldsList.filter(f => customFieldVals[f.label]);
+                            if (activeCustomFields.length === 0) return null;
+                            return (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', margin: '20px 0', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', textAlign: 'left' }}>
+                                    {activeCustomFields.map(field => (
+                                        <div key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>{field.label}</span>
+                                            <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#1e293b', marginTop: '2px' }}>{customFieldVals[field.label]}</span>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
+                            );
+                        })()}
 
-                            {/* Bank Details & Signature Section */}
-                            {/* <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
+                        {/* Items Table / Bills Table */}
+                        {viewBill.isStatement ? (
+                            <table className="invoice-table-preview">
+                                <thead>
+                                    <tr>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>Bill No</th>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>Date</th>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('item', 'Item').toUpperCase()}</th>
+                                        {getInvoiceLabel('showWarehouse') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
+                                        {getInvoiceLabel('showQty') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>{getTableHeader('quantity', 'Qty').toUpperCase()}</th>}
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>Bill Total</th>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>Paid</th>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>Due</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {viewBill.bills.map((bill, bIdx) => {
+                                        const items = bill.purchasebillitem || bill.items || [];
+                                        return items.map((item, iIdx) => (
+                                            <tr key={`${bIdx}-${iIdx}`}>
+                                                <td style={{ fontWeight: iIdx === 0 ? 600 : 400, color: iIdx === 0 ? 'inherit' : '#94a3b8' }}>
+                                                    {iIdx === 0 ? bill.billNumber : ''}
+                                                </td>
+                                                <td style={{ color: iIdx === 0 ? 'inherit' : '#94a3b8' }}>
+                                                    {iIdx === 0 ? new Date(bill.date).toLocaleDateString() : ''}
+                                                </td>
+                                                <td style={{ fontWeight: 500 }}>{item.product?.name || 'N/A'}</td>
+                                                {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || 'N/A'}</td>}
+                                                {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
+                                                <td style={{ textAlign: 'right' }}>
+                                                    {iIdx === 0 ? formatCurrency(bill.totalAmount) : ''}
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    {iIdx === 0 ? formatCurrency(bill.totalAmount - bill.balanceAmount) : ''}
+                                                </td>
+                                                <td style={{ textAlign: 'right', fontWeight: iIdx === 0 ? 600 : 400 }}>
+                                                    {iIdx === 0 ? formatCurrency(bill.balanceAmount) : ''}
+                                                </td>
+                                            </tr>
+                                        ));
+                                    })}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <table className="invoice-table-preview">
+                                <thead>
+                                    <tr>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('item', 'Item Description').toUpperCase()}</th>
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>HSN/SKU</th>
+                                        {getInvoiceLabel('showWarehouse') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
+                                        {getInvoiceLabel('showQty') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>{getTableHeader('quantity', 'Qty').toUpperCase()}</th>}
+                                        {getInvoiceLabel('showUom') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>UOM</th>}
+                                        {getInvoiceLabel('showRate') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('rate', 'Rate').toUpperCase()}</th>}
+                                        {getInvoiceLabel('showTax') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('tax', 'Tax %').toUpperCase()}</th>}
+                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('price', 'Amount').toUpperCase()}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(viewBill.purchasebillitem || viewBill.items || []).map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td>
+                                                <div style={{ fontWeight: 600 }}>{item.product?.name || 'Unknown Product'}</div>
+                                                {item.description && <div style={{ fontSize: '11px', color: '#64748b' }}>{item.description}</div>}
+                                            </td>
+                                            <td>{item.product?.hsnCode || item.product?.sku || '-'}</td>
+                                            {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || '-'}</td>}
+                                            {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
+                                            {getInvoiceLabel('showUom') !== false && <td style={{ textAlign: 'center' }}>{item.uom?.unitName || allUoms.find(u => u.id === item.uomId)?.unitName || ''}</td>}
+                                            {getInvoiceLabel('showRate') !== false && <td style={{ textAlign: 'right' }}>{formatDocCurrency(item.rate, viewBill.currency)}</td>}
+                                            {getInvoiceLabel('showTax') !== false && <td style={{ textAlign: 'right' }}>{item.taxRate}%</td>}
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatDocCurrency(item.amount, viewBill.currency)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+
+                        {/* Totals Section */}
+                        <div className="invoice-total-section">
+                            <div className="invoice-totals">
+                                {viewBill.isStatement ? (
+                                    <>
+                                        <div className="invoice-total-row">
+                                            <span className="invoice-label">Total Bill Amount:</span>
+                                            <span>{formatCurrency(viewBill.totalBillAmount)}</span>
+                                        </div>
+                                        <div className="invoice-final-total">
+                                            <span>Total Amount Paid:</span>
+                                            <span style={{ color: '#16a34a' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
+                                        </div>
+                                        <div className="invoice-final-total" style={{ borderTop: '1px solid #ef4444', marginTop: '5px', paddingTop: '5px', color: '#ef4444' }}>
+                                            <span>Total Balance Due:</span>
+                                            <span>{formatCurrency(viewBill.balanceAmount)}</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="invoice-total-row">
+                                            <span className="invoice-label">{getInvoiceLabel('subTotal')}:</span>
+                                            <span>{formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}</span>
+                                        </div>
+                                        <div className="invoice-total-row">
+                                            <span className="invoice-label">Discount:</span>
+                                            <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
+                                        </div>
+                                        <div className="invoice-total-row">
+                                            <span className="invoice-label">{getInvoiceLabel('tax')}:</span>
+                                            <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
+                                        </div>
+                                        <div className="invoice-final-total">
+                                            <span>{getInvoiceLabel('total')}:</span>
+                                            <span>{formatDocCurrency(viewBill.totalAmount, viewBill.currency)}</span>
+                                        </div>
+                                        <div className="invoice-total-row" style={{ marginTop: '5px', fontWeight: '600', color: '#16a34a' }}>
+                                            <span className="invoice-label">Amount Paid:</span>
+                                            <span>{formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}</span>
+                                        </div>
+                                        <div className="invoice-total-row" style={{ borderTop: '1px solid #e2e8f0', marginTop: '5px', paddingTop: '5px', fontWeight: '700', color: '#ef4444' }}>
+                                            <span className="invoice-label">Balance Due:</span>
+                                            <span>{formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}</span>
+                                        </div>
+                                        {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
+                                            <div className="invoice-total-row" style={{ borderTop: '1px dashed #cbd5e1', marginTop: '8px', paddingTop: '8px', fontWeight: '700', color: '#475569' }}>
+                                                <span className="invoice-label">Base Total ({companySettings?.currency || 'INR'}):</span>
+                                                <span>{formatDocCurrency((viewBill.totalAmount || 0) * (viewBill.exchangeRate || 1.0), companySettings?.currency || 'INR')}</span>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Bank Details & Signature Section */}
+                        {/* <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
                                 <div style={{ flex: 1 }}>
                                     <div className="invoice-section-header">Bank Details:</div>
                                     <div style={{ fontSize: '0.9rem', color: '#1e293b' }}>
@@ -1854,88 +1879,88 @@ const PurchaseBill = () => {
                                 </div>
                             </div> */}
 
-                            {/* Payment Details Section */}
-                            {viewBill?.payment && viewBill.payment.length > 0 && (
-                                <div style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
-                                    <h3 className="invoice-section-header" style={{ marginBottom: '0.75rem', fontWeight: 'bold' }}>Payment Details:</h3>
-                                    <table className="invoice-table-preview" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
-                                        <thead>
-                                            <tr>
-                                                <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Date</th>
-                                                <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Vch Type</th>
-                                                <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Reference No.</th>
-                                                <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Paid From</th>
-                                                <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'right' }}>Amount</th>
+                        {/* Payment Details Section */}
+                        {viewBill?.payment && viewBill.payment.length > 0 && (
+                            <div style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                                <h3 className="invoice-section-header" style={{ marginBottom: '0.75rem', fontWeight: 'bold' }}>Payment Details:</h3>
+                                <table className="invoice-table-preview" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Date</th>
+                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Vch Type</th>
+                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Reference No.</th>
+                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'left' }}>Paid From</th>
+                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', padding: '8px', textAlign: 'right' }}>Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {viewBill.payment.map((pay, idx) => (
+                                            <tr key={idx} style={{ borderBottom: '1px solid #edf2f7' }}>
+                                                <td style={{ padding: '8px' }}>{new Date(pay.date).toLocaleDateString()}</td>
+                                                <td style={{ padding: '8px' }}>Payment</td>
+                                                <td style={{ padding: '8px' }}>{pay.paymentNumber || '-'}</td>
+                                                <td style={{ padding: '8px' }}>{pay.bankLedger?.name || '-'}</td>
+                                                <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>{formatDocCurrency(pay.amount, viewBill?.currency)}</td>
                                             </tr>
-                                        </thead>
-                                        <tbody>
-                                            {viewBill.payment.map((pay, idx) => (
-                                                <tr key={idx} style={{ borderBottom: '1px solid #edf2f7' }}>
-                                                    <td style={{ padding: '8px' }}>{new Date(pay.date).toLocaleDateString()}</td>
-                                                    <td style={{ padding: '8px' }}>Payment</td>
-                                                    <td style={{ padding: '8px' }}>{pay.paymentNumber || '-'}</td>
-                                                    <td style={{ padding: '8px' }}>{pay.bankLedger?.name || '-'}</td>
-                                                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold' }}>{formatDocCurrency(pay.amount, viewBill?.currency)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
 
-                            {/* Notes Section */}
-                            {viewBill.notes && (
-                                <div style={{ marginTop: '2rem' }}>
-                                    <h3 className="invoice-section-header">Notes</h3>
-                                    <p style={{ color: '#64748b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>{viewBill.notes}</p>
-                                </div>
-                            )}
+                        {/* Notes Section */}
+                        {viewBill.notes && (
+                            <div style={{ marginTop: '2rem' }}>
+                                <h3 className="invoice-section-header">Notes</h3>
+                                <p style={{ color: '#64748b', fontSize: '0.9rem', whiteSpace: 'pre-line' }}>{viewBill.notes}</p>
+                            </div>
+                        )}
 
-                            {/* Attachments Section in View Mode */}
-                            {(() => {
-                                let customFieldVals = {};
-                                if (viewBill?.customFields) {
-                                    try {
-                                        customFieldVals = typeof viewBill.customFields === 'string'
-                                            ? JSON.parse(viewBill.customFields)
-                                            : viewBill.customFields;
-                                    } catch (e) {
-                                        console.error('Error parsing bill custom fields for view:', e);
-                                    }
+                        {/* Attachments Section in View Mode */}
+                        {(() => {
+                            let customFieldVals = {};
+                            if (viewBill?.customFields) {
+                                try {
+                                    customFieldVals = typeof viewBill.customFields === 'string'
+                                        ? JSON.parse(viewBill.customFields)
+                                        : viewBill.customFields;
+                                } catch (e) {
+                                    console.error('Error parsing bill custom fields for view:', e);
                                 }
-                                const atts = customFieldVals?._attachments;
-                                const photos = atts?.photos || [];
-                                const files = atts?.files || [];
-                                if (photos.length === 0 && files.length === 0) return null;
-                                return (
-                                    <div className="PBILL-no-print no-print" style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', textAlign: 'left' }}>
-                                        <h3 className="invoice-section-header" style={{ marginBottom: '0.75rem', fontWeight: 'bold' }}>Attachments</h3>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                                            {photos.map((item, idx) => (
-                                                <a key={`p-${idx}`} href={item.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', color: '#2563eb', textDecoration: 'none', fontWeight: '600' }}>
-                                                    <span>🖼️</span> {item.name}
-                                                </a>
-                                            ))}
-                                            {files.map((item, idx) => (
-                                                <a key={`f-${idx}`} href={item.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', color: '#2563eb', textDecoration: 'none', fontWeight: '600' }}>
-                                                    <span>📎</span> {item.name}
-                                                </a>
-                                            ))}
-                                        </div>
+                            }
+                            const atts = customFieldVals?._attachments;
+                            const photos = atts?.photos || [];
+                            const files = atts?.files || [];
+                            if (photos.length === 0 && files.length === 0) return null;
+                            return (
+                                <div className="PBILL-no-print no-print" style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', textAlign: 'left' }}>
+                                    <h3 className="invoice-section-header" style={{ marginBottom: '0.75rem', fontWeight: 'bold' }}>Attachments</h3>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                                        {photos.map((item, idx) => (
+                                            <a key={`p-${idx}`} href={item.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', color: '#2563eb', textDecoration: 'none', fontWeight: '600' }}>
+                                                <span>🖼️</span> {item.name}
+                                            </a>
+                                        ))}
+                                        {files.map((item, idx) => (
+                                            <a key={`f-${idx}`} href={item.url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', color: '#2563eb', textDecoration: 'none', fontWeight: '600' }}>
+                                                <span>📎</span> {item.name}
+                                            </a>
+                                        ))}
                                     </div>
-                                );
-                            })()}
-
-                            {getInvoiceLabel('showFooter') !== false && (
-                                <div className="invoice-thank-you" style={{ textAlign: 'center', marginTop: '3rem', borderTop: '1px dashed #cbd5e1', paddingTop: '1rem', fontStyle: 'italic', color: '#64748b' }}>
-                                    Thank you for your business!
                                 </div>
-                            )}
-                        </div>
+                            );
+                        })()}
+
+                        {getInvoiceLabel('showFooter') !== false && (
+                            <div className="invoice-thank-you" style={{ textAlign: 'center', marginTop: '3rem', borderTop: '1px dashed #cbd5e1', paddingTop: '1rem', fontStyle: 'italic', color: '#64748b' }}>
+                                Thank you for your business!
+                            </div>
+                        )}
                     </div>
                 </div>
-            );
-        }
+            </div>
+        );
+    }
 
     return (
         <div className="PBILL-page">
@@ -2027,20 +2052,20 @@ const PurchaseBill = () => {
                         <tbody>
                             {(() => {
                                 const groupedMap = {};
-                                
+
                                 bills.filter(b => {
                                     const query = searchTerm.toLowerCase();
                                     const billNo = (b.billNumber || '').toLowerCase();
                                     const vendorName = (b.vendor?.name || '').toLowerCase();
                                     const matchesSearch = !query || billNo.includes(query) || vendorName.includes(query);
-                                    
+
                                     const bDate = new Date(b.date);
                                     const start = startDate ? new Date(startDate) : null;
                                     const end = endDate ? new Date(endDate) : null;
                                     if (start) start.setHours(0, 0, 0, 0);
                                     if (end) end.setHours(23, 59, 59, 999);
                                     const matchesDate = (!start || bDate >= start) && (!end || bDate <= end);
-                                    
+
                                     return matchesSearch && matchesDate;
                                 }).forEach(b => {
                                     const key = `VENDOR-${b.vendorId}`;
@@ -2060,7 +2085,7 @@ const PurchaseBill = () => {
                                     groupedMap[key].bills.push(b);
                                     groupedMap[key].totalBillAmount += b.totalAmount;
                                     groupedMap[key].balanceAmount += b.balanceAmount;
-                                    
+
                                     if (b.purchasereturn) {
                                         b.purchasereturn.forEach(ret => {
                                             groupedMap[key].returns.push(ret);
@@ -2083,7 +2108,7 @@ const PurchaseBill = () => {
                                         <tr className="PBILL-group-row">
                                             <td className="px-4 py-3">
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <button 
+                                                    <button
                                                         className={`PBILL-toggle-btn ${expandedGroups[group.id] ? 'expanded' : ''}`}
                                                         onClick={(e) => { e.stopPropagation(); toggleGroup(group.id); }}
                                                         style={{ background: 'none', border: 'none', cursor: 'pointer', transition: 'transform 0.2s', transform: expandedGroups[group.id] ? 'rotate(180deg)' : 'rotate(0deg)' }}
@@ -2151,7 +2176,7 @@ const PurchaseBill = () => {
                                         {expandedGroups[group.id] && (
                                             <tr>
                                                 <td colSpan="9" style={{ padding: '0', backgroundColor: '#ffffff' }}>
-                                                    <div style={{ padding: '20px 30px'}}>
+                                                    <div style={{ padding: '20px 30px' }}>
                                                         <div className="PBILL-sub-table-wrapper" style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
                                                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                                                 <thead style={{ background: '#f8fafc' }}>
@@ -2191,9 +2216,9 @@ const PurchaseBill = () => {
                                                                             <td style={{ padding: '10px', textAlign: 'right' }}>
                                                                                 <div className="PBILL-action-group" style={{ justifyContent: 'flex-end', gap: '6px' }}>
                                                                                     {pb.balanceAmount > 0 && hasPermission('create purchase payment') && (
-                                                                                        <button 
-                                                                                            className="PBILL-btn-icon" 
-                                                                                            style={{ 
+                                                                                        <button
+                                                                                            className="PBILL-btn-icon"
+                                                                                            style={{
                                                                                                 display: 'inline-flex',
                                                                                                 alignItems: 'center',
                                                                                                 justifyContent: 'center',
@@ -2205,8 +2230,8 @@ const PurchaseBill = () => {
                                                                                                 background: 'transparent',
                                                                                                 cursor: 'pointer',
                                                                                                 transition: 'all 0.2s'
-                                                                                            }} 
-                                                                                            onClick={() => handleMakePayment(pb)} 
+                                                                                            }}
+                                                                                            onClick={() => handleMakePayment(pb)}
                                                                                             title="Record Payment"
                                                                                         >
                                                                                             <CreditCard size={14} />
@@ -2373,7 +2398,7 @@ const PurchaseBill = () => {
                                             const vendorObj = vendors.find(v => v.id == vId);
                                             const creditDays = vendorObj?.creditPeriod || 0;
                                             setSelectedVendorCreditPeriod(creditDays);
-                                            
+
                                             const newDueDate = calculateDueDate(billMeta.date, creditDays);
                                             setBillMeta(prev => ({ ...prev, dueDate: newDueDate }));
                                             await fetchVendorPayments(vId);
@@ -3065,88 +3090,211 @@ const PurchaseBill = () => {
                                             />
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Address Information */}
-                                <div className="Vendors-form-section">
-                                    <h3 className="Vendors-section-subtitle">Billing Address</h3>
-                                    <div className="Vendors-form-row Vendors-three-col">
-                                        <div className="Vendors-form-group" style={{ flex: '2 1 0%' }}>
-                                            <label className="Vendors-form-label">Address Street / Area</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingAddress"
-                                                value={vendorFormData.billingAddress}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="Street address"
-                                            />
+                                    {/* File Uploads */}
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-profile-img">
+                                            <label className="Vendors-form-label">Profile Image</label>
+                                            {vendorFormData.profileImage ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                    <img
+                                                        src={vendorFormData.profileImage}
+                                                        alt="Profile"
+                                                        style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setVendorFormData(prev => ({ ...prev, profileImage: '' })); }}
+                                                        style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    >
+                                                        x Remove
+                                                    </button>
+                                                </div>
+                                            ) : null}
+                                            {!vendorFormData.profileImage && (
+                                                <>
+                                                    <input
+                                                        type="file"
+                                                        ref={profileImageRef}
+                                                        accept="image/jpeg,image/png,image/jpg"
+                                                        style={{ display: 'none' }}
+                                                        onChange={(e) => handleVendorFileUpload(e.target.files[0], 'profileImage', 'vendors')}
+                                                    />
+                                                    <div className="Vendors-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                                        <div className="Vendors-file-label">
+                                                            <span className="Vendors-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
+                                                            <span className="Vendors-file-name">{vendorFormData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="Vendors-file-note">JPEG, PNG or JPG (max 5MB)</span>
+                                                </>
+                                            )}
                                         </div>
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">City</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingCity"
-                                                value={vendorFormData.billingCity}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="City"
-                                            />
+                                        <div className="Vendors-form-group Vendors-any-file">
+                                            <label className="Vendors-form-label">Any File</label>
+                                            {vendorFormData.anyFile ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                    <a
+                                                        href={vendorFormData.anyFile}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
+                                                    >
+                                                        View File
+                                                    </a>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setVendorFormData(prev => ({ ...prev, anyFile: '' }))}
+                                                        style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    >
+                                                        x Remove
+                                                    </button>
+                                                </div>
+                                            ) : null}
+                                            {!vendorFormData.anyFile && (
+                                                <>
+                                                    <input
+                                                        type="file"
+                                                        ref={anyFileRef}
+                                                        style={{ display: 'none' }}
+                                                        onChange={(e) => handleVendorFileUpload(e.target.files[0], 'anyFile', 'vendors')}
+                                                    />
+                                                    <div className="Vendors-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                                        <div className="Vendors-file-label">
+                                                            <span className="Vendors-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
+                                                            <span className="Vendors-file-name">{vendorFormData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="Vendors-file-note">Any file type. Max 10MB</span>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
-                                    <div className="Vendors-form-row Vendors-three-col">
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">State</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingState"
-                                                value={vendorFormData.billingState}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="State"
-                                            />
-                                        </div>
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">Country</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingCountry"
-                                                value={vendorFormData.billingCountry}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="Country"
-                                            />
-                                        </div>
-                                        <div className="Vendors-form-group">
-                                            <label className="Vendors-form-label">Zip Code</label>
-                                            <input
-                                                type="text"
-                                                className="Vendors-form-input"
-                                                name="billingZipCode"
-                                                value={vendorFormData.billingZipCode}
-                                                onChange={handleVendorInputChange}
-                                                placeholder="Zip code"
-                                            />
-                                        </div>
-                                    </div>
                                 </div>
 
-                                {/* Contact Info */}
+                                {/* Account Information */}
                                 <div className="Vendors-form-section">
-                                    <h3 className="Vendors-section-subtitle">Contact Info</h3>
+                                    <h3 className="Vendors-section-subtitle">Account Information</h3>
                                     <div className="Vendors-form-row Vendors-mixed-col">
                                         <div className="Vendors-form-group Vendors-half-width">
-                                            <label className="Vendors-form-label">Email Address <span className="Vendors-text-red">*</span></label>
-                                            <input
-                                                type="email"
-                                                className="Vendors-form-input"
-                                                name="email"
-                                                value={vendorFormData.email}
+                                            <label className="Vendors-form-label">Account Type <span className="Vendors-text-red">*</span></label>
+                                            <select
+                                                className="Vendors-form-select"
+                                                name="accountType"
+                                                value={vendorFormData.accountType}
                                                 onChange={handleVendorInputChange}
-                                                placeholder="Enter Email Address"
-                                                required
+                                            >
+                                                {accountTypes
+                                                    .flatMap(group => group.accounts)
+                                                    .filter(acc => acc.accountTypeName === 'Accounts Payable')
+                                                    .map((acc, j) => (
+                                                        <option key={j} value={acc.accountTypeId}>{acc.accountTypeName}</option>
+                                                    ))
+                                                }
+                                            </select>
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Balance Type</label>
+                                            <select
+                                                className="Vendors-form-select"
+                                                name="balanceType"
+                                                value={vendorFormData.balanceType}
+                                                onChange={handleVendorInputChange}
+                                            >
+                                                <option value="Credit">Credit</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <div className="Vendors-input-with-note">
+                                                <label className="Vendors-form-label">Account Name <span className="Vendors-text-red">*</span></label>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    value={vendorFormData.name}
+                                                    readOnly
+                                                    disabled
+                                                    style={{ backgroundColor: '#f3f4f6' }}
+                                                />
+                                                <span className="Vendors-input-note">This will auto-fill from selection above</span>
+                                            </div>
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Account Balance <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="number"
+                                                className="Vendors-form-input"
+                                                name="accountBalance"
+                                                value={vendorFormData.accountBalance}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="0.00"
+                                                min="0"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
                                             />
                                         </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Creation Date <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="date"
+                                                className="Vendors-form-input"
+                                                name="creationDate"
+                                                value={vendorFormData.creationDate}
+                                                onChange={handleVendorInputChange}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Bank Details */}
+                                <div className="Vendors-form-section">
+                                    <h3 className="Vendors-section-subtitle">Bank Details</h3>
+                                    <div className="Vendors-form-row Vendors-three-col">
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Bank Account Number</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="bankAccountNumber"
+                                                value={vendorFormData.bankAccountNumber}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter bank account number"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Bank IFSC</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="bankIFSC"
+                                                value={vendorFormData.bankIFSC}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter bank IFSC"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Bank Name & Branch</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="bankNameBranch"
+                                                value={vendorFormData.bankNameBranch}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter bank name & branch"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Contact & GST */}
+                                <div className="Vendors-form-section">
+                                    <h3 className="Vendors-section-subtitle">Contact & Status</h3>
+                                    <div className="Vendors-form-row Vendors-mixed-col">
                                         <div className="Vendors-form-group Vendors-half-width">
                                             <label className="Vendors-form-label">Phone <span className="Vendors-text-red">*</span></label>
                                             <input
@@ -3156,8 +3304,280 @@ const PurchaseBill = () => {
                                                 value={vendorFormData.phone}
                                                 onChange={handleVendorInputChange}
                                                 placeholder="Enter Phone"
-                                                required
                                             />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Email <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="email"
+                                                className="Vendors-form-input"
+                                                name="email"
+                                                value={vendorFormData.email}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Email"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Credit Period (days)</label>
+                                            <input
+                                                type="number"
+                                                className="Vendors-form-input"
+                                                name="creditPeriod"
+                                                value={vendorFormData.creditPeriod}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter credit period"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="Vendors-form-row" style={{ alignItems: 'center' }}>
+                                        <label className="Vendors-switch" style={{ marginRight: '10px' }}>
+                                            <input
+                                                type="checkbox"
+                                                name="gstEnabled"
+                                                checked={vendorFormData.gstEnabled}
+                                                onChange={handleVendorInputChange}
+                                            />
+                                            <span className="Vendors-slider Vendors-round"></span>
+                                        </label>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Enable GST</span>
+
+                                        {vendorFormData.gstEnabled && (
+                                            <div className="Vendors-form-group" style={{ marginLeft: '2rem', flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    name="gstNumber"
+                                                    value={vendorFormData.gstNumber}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter GSTIN"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Addresses */}
+                                <div className="Vendors-form-section">
+                                    <div className="Vendors-form-row">
+                                        {/* Billing Address */}
+                                        <div style={{ flex: 1 }}>
+                                            <h3 className="Vendors-section-subtitle">Billing Address</h3>
+                                            <div className="Vendors-form-group">
+                                                <label className="Vendors-form-label">Name</label>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    name="billingName"
+                                                    value={vendorFormData.billingName}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter Name"
+                                                />
+                                            </div>
+                                            <div className="Vendors-form-group">
+                                                <label className="Vendors-form-label">Phone</label>
+                                                <input
+                                                    type="text"
+                                                    className="Vendors-form-input"
+                                                    name="billingPhone"
+                                                    value={vendorFormData.billingPhone}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter Phone"
+                                                />
+                                            </div>
+                                            <div className="Vendors-form-group">
+                                                <label className="Vendors-form-label">Address</label>
+                                                <textarea
+                                                    className="Vendors-form-textarea"
+                                                    name="billingAddress"
+                                                    value={vendorFormData.billingAddress}
+                                                    onChange={handleVendorInputChange}
+                                                    placeholder="Enter Address"
+                                                    rows="3"
+                                                />
+                                            </div>
+                                            <div className="Vendors-form-row">
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingCity"
+                                                        value={vendorFormData.billingCity}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="City"
+                                                    />
+                                                </div>
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingState"
+                                                        value={vendorFormData.billingState}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="State"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="Vendors-form-row">
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingCountry"
+                                                        value={vendorFormData.billingCountry}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="Country"
+                                                    />
+                                                </div>
+                                                <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        className="Vendors-form-input"
+                                                        name="billingZipCode"
+                                                        value={vendorFormData.billingZipCode}
+                                                        onChange={handleVendorInputChange}
+                                                        placeholder="Zip Code"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Shipping Address */}
+                                        <div style={{ flex: 1, paddingLeft: '2rem', borderLeft: '1px solid #edf2f7' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                                <h3 className="Vendors-section-subtitle">Shipping Addresses</h3>
+                                                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            name="shippingSameAsBilling"
+                                                            checked={vendorFormData.shippingSameAsBilling}
+                                                            onChange={handleVendorInputChange}
+                                                            style={{ marginRight: '5px' }}
+                                                        />
+                                                        Apply Billing to First Shipping
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        className="Vendors-voucher-badge text-blue-600 border border-blue-600 bg-white hover:bg-blue-50"
+                                                        onClick={addVendorShippingAddress}
+                                                        style={{ padding: '2px 8px', fontSize: '0.8rem', cursor: 'pointer' }}
+                                                    >
+                                                        + Add More
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {vendorFormData.shippingSameAsBilling && (
+                                                <div style={{ marginBottom: '1.5rem', padding: '15px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#0369a1' }}>First Shipping Address (Same as Billing)</h4>
+                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#0c4a6e' }}>
+                                                        <strong>Address:</strong> {vendorFormData.billingAddress || 'N/A'}<br />
+                                                        {vendorFormData.billingCity && `${vendorFormData.billingCity}, `}{vendorFormData.billingState && `${vendorFormData.billingState}, `}{vendorFormData.billingZipCode}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {vendorFormData.shippingAddresses.length === 0 && !vendorFormData.shippingSameAsBilling && (
+                                                <div className="Vendors-form-group" style={{ padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                                    <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#64748b' }}>
+                                                        No shipping addresses added.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={addVendorShippingAddress}
+                                                        className="Vendors-voucher-badge text-blue-600"
+                                                    >
+                                                        Click here to add one
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {vendorFormData.shippingAddresses.map((addr, index) => (
+                                                <div key={index} style={{ marginBottom: '1.5rem', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', position: 'relative' }}>
+                                                    {vendorFormData.shippingAddresses.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeVendorShippingAddress(index)}
+                                                            style={{ position: 'absolute', top: '10px', right: '10px', color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    )}
+                                                    <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#475569' }}>Shipping Address #{index + 1}</h4>
+
+                                                    <div className="Vendors-form-group">
+                                                        <label className="Vendors-form-label">Name</label>
+                                                        <input
+                                                            type="text"
+                                                            className="Vendors-form-input"
+                                                            value={addr.name}
+                                                            onChange={(e) => handleVendorShippingAddressChange(index, 'name', e.target.value)}
+                                                            placeholder="Enter Name"
+                                                        />
+                                                    </div>
+                                                    <div className="Vendors-form-group">
+                                                        <label className="Vendors-form-label">Phone</label>
+                                                        <input
+                                                            type="text"
+                                                            className="Vendors-form-input"
+                                                            value={addr.phone}
+                                                            onChange={(e) => handleVendorShippingAddressChange(index, 'phone', e.target.value)}
+                                                            placeholder="Enter Phone"
+                                                        />
+                                                    </div>
+                                                    <div className="Vendors-form-group">
+                                                        <label className="Vendors-form-label">Address</label>
+                                                        <textarea
+                                                            className="Vendors-form-textarea"
+                                                            value={addr.address}
+                                                            onChange={(e) => handleVendorShippingAddressChange(index, 'address', e.target.value)}
+                                                            placeholder="Enter Address"
+                                                            rows="2"
+                                                        />
+                                                    </div>
+                                                    <div className="Vendors-form-row">
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.city}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'city', e.target.value)}
+                                                                placeholder="City"
+                                                            />
+                                                        </div>
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.state}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'state', e.target.value)}
+                                                                placeholder="State"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="Vendors-form-row">
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.country}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'country', e.target.value)}
+                                                                placeholder="Country"
+                                                            />
+                                                        </div>
+                                                        <div className="Vendors-form-group" style={{ flex: 1 }}>
+                                                            <input
+                                                                type="text"
+                                                                className="Vendors-form-input"
+                                                                value={addr.zipCode}
+                                                                onChange={(e) => handleVendorShippingAddressChange(index, 'zipCode', e.target.value)}
+                                                                placeholder="Zip Code"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
@@ -3174,7 +3594,7 @@ const PurchaseBill = () => {
             {/* Add New Product Modal */}
             {showAddProductModal && (
                 <div className="Zirak-Inventory-modal-overlay" style={{ zIndex: 20000 }}>
-                    <div className="Zirak-Inventory-modal-content" style={{ textAlign: 'left' }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-modal" style={{ textAlign: 'left' }}>
                         <div className="Zirak-Inventory-modal-header">
                             <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
                             <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
@@ -3341,16 +3761,56 @@ const PurchaseBill = () => {
                                     </div>
                                 </div>
 
-                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
-                                    <label className="Zirak-Inventory-form-label">Description</label>
+                                <div className="Zirak-Inventory-section-title-row">
+                                    <h3 className="Zirak-Inventory-section-title">Warehouse Information</h3>
+                                    <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={addProductWarehouseRow}>+ Add Warehouse</button>
+                                </div>
+
+                                <div className="Zirak-Inventory-warehouse-table-container">
+                                    <table className="Zirak-Inventory-warehouse-input-table">
+                                        <thead>
+                                            <tr>
+                                                <th>WAREHOUSE</th>
+                                                <th>QUANTITY</th>
+                                                <th>MINIMUM ORDER QUANTITY</th>
+                                                <th>INITIAL QUANTITY ON HAND</th>
+                                                <th>ACTION</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input Zirak-Inventory-mini"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            <option value="">Select Warehouse</option>
+                                                            {warehouses.map(wh => (
+                                                                <option key={wh.id} value={wh.id}>{wh.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.quantity} onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.minOrderQty} onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.initialQty} onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)} /></td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-remove" onClick={() => removeProductWarehouseRow(row.id)}>Remove</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group Zirak-Inventory-full-width" style={{ marginTop: '1rem' }}>
+                                    <label className="Zirak-Inventory-form-label">Item Description</label>
                                     <textarea
-                                        className="Zirak-Inventory-form-textarea"
-                                        name="description"
-                                        placeholder="Enter item description"
-                                        value={productFormData.description}
-                                        onChange={handleProductInputChange}
-                                        rows="2"
-                                    />
+                                        name="description" className="Zirak-Inventory-form-input Zirak-Inventory-textarea"
+                                        placeholder="Enter item description" rows={3}
+                                        value={productFormData.description} onChange={handleProductInputChange}
+                                    ></textarea>
                                 </div>
 
                                 <div className="Zirak-Inventory-form-grid" style={{ marginTop: '15px' }}>
@@ -3432,71 +3892,7 @@ const PurchaseBill = () => {
                                     />
                                 </div>
 
-                                <div style={{ marginTop: '20px', borderTop: '1px solid #f3f4f6', paddingTop: '15px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                        <h3 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Warehouse Information</h3>
-                                        <button type="button" className="Zirak-Inventory-btn-add-warehouse" onClick={addProductWarehouseRow}>
-                                            + Add Warehouse
-                                        </button>
-                                    </div>
-                                    <table className="Zirak-Inventory-warehouse-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Warehouse</th>
-                                                <th>Quantity</th>
-                                                <th>Min Order Qty</th>
-                                                <th>Initial Qty</th>
-                                                <th>Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {productWarehouseRows.map((row) => (
-                                                <tr key={row.id}>
-                                                    <td>
-                                                        <select
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.warehouseId}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
-                                                        >
-                                                            {warehouses.map(w => (
-                                                                <option key={w.id} value={w.id}>{w.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.quantity}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.minOrderQty}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.initialQty}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <button type="button" className="Zirak-Inventory-btn-delete-row" onClick={() => removeProductWarehouseRow(row.id)}>
-                                                            Delete
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+
                             </div>
                             <div className="Zirak-Inventory-modal-footer">
                                 <button type="button" className="Zirak-Inventory-btn-cancel" onClick={() => setShowAddProductModal(false)}>Cancel</button>
@@ -3639,8 +4035,8 @@ const PurchaseBill = () => {
                                                     style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
                                                 />
                                                 <span> {
-                                                    isNaN(uomFormData.baseUnitId) 
-                                                        ? uomFormData.baseUnitId 
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
                                                         : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
                                                 }</span>
                                             </div>

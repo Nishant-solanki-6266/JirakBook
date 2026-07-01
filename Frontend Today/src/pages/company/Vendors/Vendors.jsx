@@ -513,89 +513,89 @@ const Vendors = () => {
                                     </div>
                                 </div>
 
-                            {/* File Uploads */}
-                            <div className="Vendors-form-row Vendors-mixed-col">
-                                <div className="Vendors-form-group Vendors-profile-img">
-                                    <label className="Vendors-form-label">Profile Image</label>
-                                    {formData.profileImage ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                                            <img
-                                                src={formData.profileImage}
-                                                alt="Profile"
-                                                style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                                            />
-                                            {modalMode !== 'view' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { setFormData(prev => ({ ...prev, profileImage: '' })); }}
-                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
-                                                >
-                                                    x Remove
-                                                </button>
-                                            )}
-                                        </div>
-                                    ) : null}
-                                    {modalMode !== 'view' && (
-                                        <>
-                                            <input
-                                                type="file"
-                                                ref={profileImageRef}
-                                                accept="image/jpeg,image/png,image/jpg"
-                                                style={{ display: 'none' }}
-                                                onChange={(e) => handleFileUpload(e.target.files[0], 'profileImage', 'vendors')}
-                                            />
-                                            <div className="Vendors-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
-                                                <div className="Vendors-file-label">
-                                                    <span className="Vendors-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
-                                                    <span className="Vendors-file-name">{formData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
-                                                </div>
+                                {/* File Uploads */}
+                                <div className="Vendors-form-row Vendors-mixed-col">
+                                    <div className="Vendors-form-group Vendors-profile-img">
+                                        <label className="Vendors-form-label">Profile Image</label>
+                                        {formData.profileImage ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <img
+                                                    src={formData.profileImage}
+                                                    alt="Profile"
+                                                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                />
+                                                {modalMode !== 'view' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setFormData(prev => ({ ...prev, profileImage: '' })); }}
+                                                        style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    >
+                                                        x Remove
+                                                    </button>
+                                                )}
                                             </div>
-                                            <span className="Vendors-file-note">JPEG, PNG or JPG (max 5MB)</span>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="Vendors-form-group Vendors-any-file">
-                                    <label className="Vendors-form-label">Any File</label>
-                                    {formData.anyFile ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                                            <a
-                                                href={formData.anyFile}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
-                                            >
-                                                View File
-                                            </a>
-                                            {modalMode !== 'view' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData(prev => ({ ...prev, anyFile: '' }))}
-                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
-                                                >
-                                                    x Remove
-                                                </button>
-                                            )}
-                                        </div>
-                                    ) : null}
-                                    {modalMode !== 'view' && (
-                                        <>
-                                            <input
-                                                type="file"
-                                                ref={anyFileRef}
-                                                style={{ display: 'none' }}
-                                                onChange={(e) => handleFileUpload(e.target.files[0], 'anyFile', 'vendors')}
-                                            />
-                                            <div className="Vendors-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
-                                                <div className="Vendors-file-label">
-                                                    <span className="Vendors-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
-                                                    <span className="Vendors-file-name">{formData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                        ) : null}
+                                        {modalMode !== 'view' && (
+                                            <>
+                                                <input
+                                                    type="file"
+                                                    ref={profileImageRef}
+                                                    accept="image/jpeg,image/png,image/jpg"
+                                                    style={{ display: 'none' }}
+                                                    onChange={(e) => handleFileUpload(e.target.files[0], 'profileImage', 'vendors')}
+                                                />
+                                                <div className="Vendors-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                                    <div className="Vendors-file-label">
+                                                        <span className="Vendors-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
+                                                        <span className="Vendors-file-name">{formData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
+                                                    </div>
                                                 </div>
+                                                <span className="Vendors-file-note">JPEG, PNG or JPG (max 5MB)</span>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="Vendors-form-group Vendors-any-file">
+                                        <label className="Vendors-form-label">Any File</label>
+                                        {formData.anyFile ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                <a
+                                                    href={formData.anyFile}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
+                                                >
+                                                    View File
+                                                </a>
+                                                {modalMode !== 'view' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, anyFile: '' }))}
+                                                        style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                    >
+                                                        x Remove
+                                                    </button>
+                                                )}
                                             </div>
-                                            <span className="Vendors-file-note">Any file type. Max 10MB</span>
-                                        </>
-                                    )}
+                                        ) : null}
+                                        {modalMode !== 'view' && (
+                                            <>
+                                                <input
+                                                    type="file"
+                                                    ref={anyFileRef}
+                                                    style={{ display: 'none' }}
+                                                    onChange={(e) => handleFileUpload(e.target.files[0], 'anyFile', 'vendors')}
+                                                />
+                                                <div className="Vendors-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                                    <div className="Vendors-file-label">
+                                                        <span className="Vendors-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
+                                                        <span className="Vendors-file-name">{formData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                                    </div>
+                                                </div>
+                                                <span className="Vendors-file-note">Any file type. Max 10MB</span>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
                             </div>
 
                             {/* Account Information */}

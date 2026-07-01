@@ -403,8 +403,8 @@ const SalesOrder = () => {
                 unitName: uomFormData.unitName,
                 weightPerUnit: uomFormData.weightPerUnit,
                 uomType: uomFormData.uomType,
-                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
-                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
                     : null,
                 conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
                 companyId: parseInt(companyId)
@@ -455,7 +455,7 @@ const SalesOrder = () => {
             await productServiceFromServices.createProduct(payload);
             toast.success('Product created successfully!');
             setShowAddProductModal(false);
-            
+
             // Refresh products
             const prodRes = await productService.getAll(companyId);
             if (prodRes?.data?.success) {
@@ -1041,8 +1041,8 @@ const SalesOrder = () => {
                                         <select
                                             value={order.manualStatus ? order.status : 'AUTO'}
                                             onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                                             className="SalesOrder-sales-order-status-pill"
-                                             style={getStatusStyle(order.manualStatus ? order.status : 'AUTO')}
+                                            className="SalesOrder-sales-order-status-pill"
+                                            style={getStatusStyle(order.manualStatus ? order.status : 'AUTO')}
                                         >
                                             <option value="AUTO">Auto ({order.status || 'Pending'})</option>
                                             <option value="PENDING">PENDING</option>
@@ -1238,9 +1238,9 @@ const SalesOrder = () => {
                                                         <tr key={item.id}>
                                                             <td style={{ width: '35%' }}>
                                                                 <span className="font-bold text-sm text-gray-800 block">
-                                                                    {item.productId ? allProducts.find(p => p.id === parseInt(item.productId))?.name : 
-                                                                     item.serviceId ? allServices.find(s => s.id === parseInt(item.serviceId))?.name : 
-                                                                     'N/A'}
+                                                                    {item.productId ? allProducts.find(p => p.id === parseInt(item.productId))?.name :
+                                                                        item.serviceId ? allServices.find(s => s.id === parseInt(item.serviceId))?.name :
+                                                                            'N/A'}
                                                                 </span>
                                                                 {item.description && <span className="text-xs text-gray-500 block mt-0.5">{item.description}</span>}
                                                             </td>
@@ -1411,30 +1411,30 @@ const SalesOrder = () => {
                                         <div className="SalesOrder-customer-section-compact">
                                             <div className="SalesOrder-customer-header-row">
                                                 <div className="SalesOrder-form-group">
-                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                         <label className="SalesOrder-form-label-sm">Select Customer</label>
-                                                         {!isViewMode && creationMode === 'direct' && (
-                                                             <button
-                                                                 type="button"
-                                                                 onClick={() => setShowAddCustomerModal(true)}
-                                                                 style={{
-                                                                     backgroundColor: '#22c55e',
-                                                                     color: '#ffffff',
-                                                                     border: 'none',
-                                                                     borderRadius: '4px',
-                                                                     padding: '2px 8px',
-                                                                     fontSize: '0.75rem',
-                                                                     fontWeight: 'bold',
-                                                                     cursor: 'pointer',
-                                                                     display: 'flex',
-                                                                     alignItems: 'center',
-                                                                     gap: '4px'
-                                                                 }}
-                                                             >
-                                                                 <Plus size={12} /> Add Customer
-                                                             </button>
-                                                         )}
-                                                     </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                        <label className="SalesOrder-form-label-sm">Select Customer</label>
+                                                        {!isViewMode && creationMode === 'direct' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowAddCustomerModal(true)}
+                                                                style={{
+                                                                    backgroundColor: '#22c55e',
+                                                                    color: '#ffffff',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '2px 8px',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 'bold',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}
+                                                            >
+                                                                <Plus size={12} /> Add Customer
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     <select
                                                         className="SalesOrder-form-select-compact"
                                                         value={customerId}
@@ -2116,7 +2116,7 @@ const SalesOrder = () => {
             {/* Add New Product Modal */}
             {showAddProductModal && (
                 <div className="Zirak-Inventory-modal-overlay" style={{ zIndex: 20000 }}>
-                    <div className="Zirak-Inventory-modal-content" style={{ textAlign: 'left' }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-modal" style={{ textAlign: 'left' }}>
                         <div className="Zirak-Inventory-modal-header">
                             <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
                             <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
@@ -2283,16 +2283,56 @@ const SalesOrder = () => {
                                     </div>
                                 </div>
 
-                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
-                                    <label className="Zirak-Inventory-form-label">Description</label>
+                                <div className="Zirak-Inventory-section-title-row">
+                                    <h3 className="Zirak-Inventory-section-title">Warehouse Information</h3>
+                                    <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={addProductWarehouseRow}>+ Add Warehouse</button>
+                                </div>
+
+                                <div className="Zirak-Inventory-warehouse-table-container">
+                                    <table className="Zirak-Inventory-warehouse-input-table">
+                                        <thead>
+                                            <tr>
+                                                <th>WAREHOUSE</th>
+                                                <th>QUANTITY</th>
+                                                <th>MINIMUM ORDER QUANTITY</th>
+                                                <th>INITIAL QUANTITY ON HAND</th>
+                                                <th>ACTION</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input Zirak-Inventory-mini"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            <option value="">Select Warehouse</option>
+                                                            {allWarehouses.map(wh => (
+                                                                <option key={wh.id} value={wh.id}>{wh.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.quantity} onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.minOrderQty} onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.initialQty} onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)} /></td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-remove" onClick={() => removeProductWarehouseRow(row.id)}>Remove</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group Zirak-Inventory-full-width" style={{ marginTop: '1rem' }}>
+                                    <label className="Zirak-Inventory-form-label">Item Description</label>
                                     <textarea
-                                        className="Zirak-Inventory-form-textarea"
-                                        name="description"
-                                        placeholder="Enter item description"
-                                        value={productFormData.description}
-                                        onChange={handleProductInputChange}
-                                        rows="2"
-                                    />
+                                        name="description" className="Zirak-Inventory-form-input Zirak-Inventory-textarea"
+                                        placeholder="Enter item description" rows={3}
+                                        value={productFormData.description} onChange={handleProductInputChange}
+                                    ></textarea>
                                 </div>
 
                                 <div className="Zirak-Inventory-form-grid" style={{ marginTop: '15px' }}>
@@ -2581,8 +2621,8 @@ const SalesOrder = () => {
                                                     style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
                                                 />
                                                 <span> {
-                                                    isNaN(uomFormData.baseUnitId) 
-                                                        ? uomFormData.baseUnitId 
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
                                                         : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
                                                 }</span>
                                             </div>

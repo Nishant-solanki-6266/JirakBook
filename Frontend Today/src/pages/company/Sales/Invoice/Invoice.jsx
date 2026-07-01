@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { getStatusStyle } from '../../../../utils/statusStyle';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CompanyContext } from '../../../../context/CompanyContext';
@@ -698,8 +698,8 @@ const Invoice = () => {
                 unitName: uomFormData.unitName,
                 weightPerUnit: uomFormData.weightPerUnit,
                 uomType: uomFormData.uomType,
-                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
-                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
                     : null,
                 conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
                 companyId: parseInt(companyId)
@@ -750,7 +750,7 @@ const Invoice = () => {
             await productServiceFromServices.createProduct(payload);
             toast.success('Product created successfully!');
             setShowAddProductModal(false);
-            
+
             // Refresh products
             const prodRes = await productService.getAll(companyId);
             if (prodRes?.data?.success) {
@@ -2132,10 +2132,10 @@ const Invoice = () => {
                                 });
 
                                 Object.values(groupedMap).forEach(group => {
-                                     if (group.invoices.length === 1 && group.returns.length === 0) {
-                                         group.isSingle = true;
-                                     }
-                                 });
+                                    if (group.invoices.length === 1 && group.returns.length === 0) {
+                                        group.isSingle = true;
+                                    }
+                                });
 
                                 return Object.values(groupedMap).map(group => (
                                     <React.Fragment key={group.id}>
@@ -2172,41 +2172,41 @@ const Invoice = () => {
                                                 </div>
                                             </td>
                                             <td>
-                                                 {(() => {
-                                                     let statusVal = 'Combined';
-                                                     if (group.isSingle) {
-                                                         statusVal = group.invoices[0].status;
-                                                     } else if (group.balanceAmount === 0) {
-                                                         if (group.totalReturnAmount > 0) {
-                                                             const allReturned = group.invoices.every(inv => inv.status.toLowerCase().includes('returned') && !inv.status.toLowerCase().includes('partial'));
-                                                             statusVal = allReturned ? 'Returned' : 'Partially Returned';
-                                                         } else {
-                                                             statusVal = 'Fully Paid';
-                                                         }
-                                                     }
-                                                     if (group.isSingle) {
-                                                         const singleInv = group.invoices[0];
-                                                         return (
-                                                             <select
-                                                                 value={singleInv.manualStatus ? singleInv.status : 'AUTO'}
-                                                                 onChange={(e) => handleStatusChange(singleInv.id, singleInv.type === 'POS_INVOICE', e.target.value)}
-                                                                 className="Invoice-invoice-status-pill"
-                                                                 style={getStatusStyle(singleInv.manualStatus ? singleInv.status : 'AUTO')}
-                                                             >
-                                                                 <option value="AUTO">Auto ({singleInv.status})</option>
-                                                                 <option value="UNPAID">UNPAID</option>
-                                                                 <option value="PARTIAL">PARTIAL</option>
-                                                                 <option value="PAID">PAID</option>
-                                                                 <option value="CANCELLED">CANCELLED</option>
-                                                             </select>
-                                                         );
-                                                     }
-                                                     return (
-                                                         <span className={`Invoice-invoice-status-pill ${getStatusClass(statusVal)}`}>
-                                                             {statusVal}
-                                                         </span>
-                                                     );
-                                                 })()}
+                                                {(() => {
+                                                    let statusVal = 'Combined';
+                                                    if (group.isSingle) {
+                                                        statusVal = group.invoices[0].status;
+                                                    } else if (group.balanceAmount === 0) {
+                                                        if (group.totalReturnAmount > 0) {
+                                                            const allReturned = group.invoices.every(inv => inv.status.toLowerCase().includes('returned') && !inv.status.toLowerCase().includes('partial'));
+                                                            statusVal = allReturned ? 'Returned' : 'Partially Returned';
+                                                        } else {
+                                                            statusVal = 'Fully Paid';
+                                                        }
+                                                    }
+                                                    if (group.isSingle) {
+                                                        const singleInv = group.invoices[0];
+                                                        return (
+                                                            <select
+                                                                value={singleInv.manualStatus ? singleInv.status : 'AUTO'}
+                                                                onChange={(e) => handleStatusChange(singleInv.id, singleInv.type === 'POS_INVOICE', e.target.value)}
+                                                                className="Invoice-invoice-status-pill"
+                                                                style={getStatusStyle(singleInv.manualStatus ? singleInv.status : 'AUTO')}
+                                                            >
+                                                                <option value="AUTO">Auto ({singleInv.status})</option>
+                                                                <option value="UNPAID">UNPAID</option>
+                                                                <option value="PARTIAL">PARTIAL</option>
+                                                                <option value="PAID">PAID</option>
+                                                                <option value="CANCELLED">CANCELLED</option>
+                                                            </select>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <span className={`Invoice-invoice-status-pill ${getStatusClass(statusVal)}`}>
+                                                            {statusVal}
+                                                        </span>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="text-right">
                                                 <div className="Invoice-invoice-action-buttons text-nowrap">
@@ -2223,7 +2223,7 @@ const Invoice = () => {
                                                                 fontWeight: '700',
                                                                 border: 'none',
                                                                 cursor: 'pointer',
-                                                                
+
                                                                 boxShadow: '0 4px 6px -1px rgba(245, 158, 11, 0.3)'
                                                             }}
                                                         >
@@ -2472,7 +2472,7 @@ const Invoice = () => {
                                             className="Invoice-compact-input" />
                                     </div>
                                 )}
-                             </div>
+                            </div>
 
                             {/* Customer & Address Grid */}
                             <div className="Invoice-address-horizontal-grid">
@@ -2801,9 +2801,9 @@ const Invoice = () => {
                                                     </td>
                                                     {getInvoiceLabel('showWarehouse') !== false && (
                                                         <td>
-                                                            <select 
-                                                                className="Invoice-compact-select" 
-                                                                value={item.warehouseId} 
+                                                            <select
+                                                                className="Invoice-compact-select"
+                                                                value={item.warehouseId}
                                                                 disabled={!!selectedChallan}
                                                                 onChange={(e) => updateItem(item.id, 'warehouseId', e.target.value)}
                                                             >
@@ -3590,7 +3590,7 @@ const Invoice = () => {
             {/* Add New Product Modal */}
             {showAddProductModal && (
                 <div className="Zirak-Inventory-modal-overlay" style={{ zIndex: 20000 }}>
-                    <div className="Zirak-Inventory-modal-content" style={{ textAlign: 'left' }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-modal" style={{ textAlign: 'left' }}>
                         <div className="Zirak-Inventory-modal-header">
                             <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
                             <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
@@ -3757,16 +3757,56 @@ const Invoice = () => {
                                     </div>
                                 </div>
 
-                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
-                                    <label className="Zirak-Inventory-form-label">Description</label>
+                                <div className="Zirak-Inventory-section-title-row">
+                                    <h3 className="Zirak-Inventory-section-title">Warehouse Information</h3>
+                                    <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={addProductWarehouseRow}>+ Add Warehouse</button>
+                                </div>
+
+                                <div className="Zirak-Inventory-warehouse-table-container">
+                                    <table className="Zirak-Inventory-warehouse-input-table">
+                                        <thead>
+                                            <tr>
+                                                <th>WAREHOUSE</th>
+                                                <th>QUANTITY</th>
+                                                <th>MINIMUM ORDER QUANTITY</th>
+                                                <th>INITIAL QUANTITY ON HAND</th>
+                                                <th>ACTION</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input Zirak-Inventory-mini"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            <option value="">Select Warehouse</option>
+                                                            {allWarehouses.map(wh => (
+                                                                <option key={wh.id} value={wh.id}>{wh.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.quantity} onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.minOrderQty} onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.initialQty} onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)} /></td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-remove" onClick={() => removeProductWarehouseRow(row.id)}>Remove</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group Zirak-Inventory-full-width" style={{ marginTop: '1rem' }}>
+                                    <label className="Zirak-Inventory-form-label">Item Description</label>
                                     <textarea
-                                        className="Zirak-Inventory-form-textarea"
-                                        name="description"
-                                        placeholder="Enter item description"
-                                        value={productFormData.description}
-                                        onChange={handleProductInputChange}
-                                        rows="2"
-                                    />
+                                        name="description" className="Zirak-Inventory-form-input Zirak-Inventory-textarea"
+                                        placeholder="Enter item description" rows={3}
+                                        value={productFormData.description} onChange={handleProductInputChange}
+                                    ></textarea>
                                 </div>
 
                                 <div className="Zirak-Inventory-form-grid" style={{ marginTop: '15px' }}>
@@ -3848,71 +3888,7 @@ const Invoice = () => {
                                     />
                                 </div>
 
-                                <div style={{ marginTop: '20px', borderTop: '1px solid #f3f4f6', paddingTop: '15px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                        <h3 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Warehouse Information</h3>
-                                        <button type="button" className="Zirak-Inventory-btn-add-warehouse" onClick={addProductWarehouseRow}>
-                                            + Add Warehouse
-                                        </button>
-                                    </div>
-                                    <table className="Zirak-Inventory-warehouse-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Warehouse</th>
-                                                <th>Quantity</th>
-                                                <th>Min Order Qty</th>
-                                                <th>Initial Qty</th>
-                                                <th>Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {productWarehouseRows.map((row) => (
-                                                <tr key={row.id}>
-                                                    <td>
-                                                        <select
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.warehouseId}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
-                                                        >
-                                                            {allWarehouses.map(w => (
-                                                                <option key={w.id} value={w.id}>{w.name}</option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.quantity}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.minOrderQty}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <input
-                                                            type="number"
-                                                            className="Zirak-Inventory-form-input"
-                                                            value={row.initialQty}
-                                                            onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)}
-                                                        />
-                                                    </td>
-                                                    <td>
-                                                        <button type="button" className="Zirak-Inventory-btn-delete-row" onClick={() => removeProductWarehouseRow(row.id)}>
-                                                            Delete
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+
                             </div>
                             <div className="Zirak-Inventory-modal-footer">
                                 <button type="button" className="Zirak-Inventory-btn-cancel" onClick={() => setShowAddProductModal(false)}>Cancel</button>
@@ -4055,8 +4031,8 @@ const Invoice = () => {
                                                     style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
                                                 />
                                                 <span> {
-                                                    isNaN(uomFormData.baseUnitId) 
-                                                        ? uomFormData.baseUnitId 
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
                                                         : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
                                                 }</span>
                                             </div>
