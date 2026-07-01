@@ -181,8 +181,10 @@ const createReturn = async (req, res) => {
 
             // 3. Update Invoice Balance if linked
             console.log("[createReturn] tx: Updating invoice/posinvoice balance...");
+            let isInvoicePaid = false;
             if (invoiceId) {
                 if (isPosInvoice) {
+                    isInvoicePaid = true; // POS is always paid immediately
                     const newBalance = Math.max(0, posInvoice.balanceAmount - totalAmount);
                     await tx.posinvoice.update({
                         where: { id: posInvoice.id },
@@ -194,6 +196,9 @@ const createReturn = async (req, res) => {
                 } else {
                     const invoice = await tx.invoice.findUnique({ where: { id: parseInt(invoiceId) } });
                     if (invoice) {
+                        if (invoice.status === 'PAID' || invoice.status === 'Paid' || invoice.paidAmount >= invoice.totalAmount) {
+                            isInvoicePaid = true;
+                        }
                         const newBalance = Math.max(0, invoice.balanceAmount - totalAmount);
 
                         await tx.invoice.update({
@@ -212,6 +217,9 @@ const createReturn = async (req, res) => {
             console.log("[createReturn] tx: Resolving tax and discount ledgers...");
             const taxLedger = await resolveLedger(tx, 'Tax', 'LIABILITIES');
             const discountAllowedLedger = await resolveLedger(tx, 'Discount Allowed on Sale', 'EXPENSES');
+            const cashLedger = await resolveLedger(tx, 'Cash in Hand', 'ASSETS') || await resolveLedger(tx, 'Main Bank Account', 'ASSETS');
+
+            const creditTargetLedgerId = isInvoicePaid && cashLedger ? cashLedger.id : customer.ledgerId;
 
             console.log("[createReturn] tx: Updating accounting ledger balances...");
             // DR Sales Return (gross portion)
@@ -220,9 +228,9 @@ const createReturn = async (req, res) => {
                 data: { currentBalance: { increment: returnedSubtotal } }
             });
 
-            // CR Customer (net portion: subtotal + tax - discount)
+            // CR Customer/Cash (net portion: subtotal + tax - discount)
             await tx.ledger.update({
-                where: { id: customer.ledgerId },
+                where: { id: creditTargetLedgerId },
                 data: { currentBalance: { decrement: totalAmount } }
             });
 
@@ -242,14 +250,14 @@ const createReturn = async (req, res) => {
                 });
             }
 
-            // Entry 1: DR Sales Return, CR Customer (gross portion)
+            // Entry 1: DR Sales Return, CR Customer/Cash (gross portion)
             await tx.transaction.create({
                 data: {
                     date: new Date(date),
                     voucherType: 'SALES_RETURN',
                     voucherNumber: autoVoucherNo,
                     debitLedgerId: returnLedger.id,
-                    creditLedgerId: customer.ledgerId,
+                    creditLedgerId: creditTargetLedgerId,
                     amount: returnedSubtotal,
                     narration: `Sales Return (Revenue portion) from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                     companyId: parseInt(companyId),
@@ -258,7 +266,7 @@ const createReturn = async (req, res) => {
                 }
             });
 
-            // Entry 2 (if tax > 0): DR Tax Payable, CR Customer
+            // Entry 2 (if tax > 0): DR Tax Payable, CR Customer/Cash
             if (returnedTax > 0 && taxLedger) {
                 await tx.transaction.create({
                     data: {
@@ -266,7 +274,7 @@ const createReturn = async (req, res) => {
                         voucherType: 'SALES_RETURN',
                         voucherNumber: autoVoucherNo,
                         debitLedgerId: taxLedger.id,
-                        creditLedgerId: customer.ledgerId,
+                        creditLedgerId: creditTargetLedgerId,
                         amount: returnedTax,
                         narration: `Sales Return Tax Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
@@ -276,14 +284,14 @@ const createReturn = async (req, res) => {
                 });
             }
 
-            // Entry 3 (if discount > 0): DR Customer, CR Discount Allowed on Sale
+            // Entry 3 (if discount > 0): DR Customer/Cash, CR Discount Allowed on Sale
             if (returnedDiscount > 0 && discountAllowedLedger) {
                 await tx.transaction.create({
                     data: {
                         date: new Date(date),
                         voucherType: 'SALES_RETURN',
                         voucherNumber: autoVoucherNo,
-                        debitLedgerId: customer.ledgerId,
+                        debitLedgerId: creditTargetLedgerId,
                         creditLedgerId: discountAllowedLedger.id,
                         amount: returnedDiscount,
                         narration: `Sales Return Discount Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
@@ -660,9 +668,18 @@ const updateReturn = async (req, res) => {
                 });
             }
 
-            if (existing.customer && existing.customer.ledgerId) {
+            const oldTx = await tx.transaction.findFirst({
+                where: {
+                    companyId: parseInt(companyId),
+                    voucherNumber: existing.autoVoucherNo,
+                    voucherType: 'SALES_RETURN'
+                }
+            });
+            const oldCreditLedgerId = oldTx ? oldTx.creditLedgerId : (existing.customer ? existing.customer.ledgerId : null);
+
+            if (oldCreditLedgerId) {
                 await tx.ledger.update({
-                    where: { id: existing.customer.ledgerId },
+                    where: { id: oldCreditLedgerId },
                     data: { currentBalance: { increment: existing.totalAmount } }
                 });
             }
@@ -808,9 +825,25 @@ const updateReturn = async (req, res) => {
                 data: { currentBalance: { increment: returnedSubtotal } }
             });
 
-            // CR Customer (net portion: subtotal + tax - discount)
+            // Determine if the new/updated invoice is paid
+            let isNewInvoicePaid = false;
+            if (invoiceId) {
+                if (isPosInvoice) {
+                    isNewInvoicePaid = true;
+                } else {
+                    const invoice = await tx.invoice.findUnique({ where: { id: parseInt(invoiceId) } });
+                    if (invoice && (invoice.status === 'PAID' || invoice.status === 'Paid' || invoice.paidAmount >= invoice.totalAmount)) {
+                        isNewInvoicePaid = true;
+                    }
+                }
+            }
+
+            const cashLedger = await resolveLedger(tx, 'Cash in Hand', 'ASSETS') || await resolveLedger(tx, 'Main Bank Account', 'ASSETS');
+            const newCreditTargetLedgerId = isNewInvoicePaid && cashLedger ? cashLedger.id : customer.ledgerId;
+
+            // CR Customer/Cash (net portion: subtotal + tax - discount)
             await tx.ledger.update({
-                where: { id: customer.ledgerId },
+                where: { id: newCreditTargetLedgerId },
                 data: { currentBalance: { decrement: totalAmount } }
             });
 
@@ -830,14 +863,14 @@ const updateReturn = async (req, res) => {
                 });
             }
 
-            // Entry 1: DR Sales Return, CR Customer (gross portion)
+            // Entry 1: DR Sales Return, CR Customer/Cash (gross portion)
             await tx.transaction.create({
                 data: {
                     date: new Date(date),
                     voucherType: 'SALES_RETURN',
                     voucherNumber: existing.autoVoucherNo,
                     debitLedgerId: returnLedger.id,
-                    creditLedgerId: customer.ledgerId,
+                    creditLedgerId: newCreditTargetLedgerId,
                     amount: returnedSubtotal,
                     narration: `Sales Return (Revenue portion) from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                     companyId: parseInt(companyId),
@@ -846,7 +879,7 @@ const updateReturn = async (req, res) => {
                 }
             });
 
-            // Entry 2 (if tax > 0): DR Tax Payable, CR Customer
+            // Entry 2 (if tax > 0): DR Tax Payable, CR Customer/Cash
             if (returnedTax > 0 && taxLedger) {
                 await tx.transaction.create({
                     data: {
@@ -854,7 +887,7 @@ const updateReturn = async (req, res) => {
                         voucherType: 'SALES_RETURN',
                         voucherNumber: existing.autoVoucherNo,
                         debitLedgerId: taxLedger.id,
-                        creditLedgerId: customer.ledgerId,
+                        creditLedgerId: newCreditTargetLedgerId,
                         amount: returnedTax,
                         narration: `Sales Return Tax Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
@@ -864,14 +897,14 @@ const updateReturn = async (req, res) => {
                 });
             }
 
-            // Entry 3 (if discount > 0): DR Customer, CR Discount Allowed on Sale
+            // Entry 3 (if discount > 0): DR Customer/Cash, CR Discount Allowed on Sale
             if (returnedDiscount > 0 && discountAllowedLedger) {
                 await tx.transaction.create({
                     data: {
                         date: new Date(date),
                         voucherType: 'SALES_RETURN',
                         voucherNumber: existing.autoVoucherNo,
-                        debitLedgerId: customer.ledgerId,
+                        debitLedgerId: newCreditTargetLedgerId,
                         creditLedgerId: discountAllowedLedger.id,
                         amount: returnedDiscount,
                         narration: `Sales Return Discount Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
@@ -1060,9 +1093,18 @@ const deleteReturn = async (req, res) => {
                 });
             }
 
-            if (salesReturn.customer && salesReturn.customer.ledgerId) {
+            const originalTx = await tx.transaction.findFirst({
+                where: {
+                    companyId: parseInt(companyId),
+                    voucherNumber: salesReturn.autoVoucherNo,
+                    voucherType: 'SALES_RETURN'
+                }
+            });
+            const actualCreditLedgerId = originalTx ? originalTx.creditLedgerId : (salesReturn.customer ? salesReturn.customer.ledgerId : null);
+
+            if (actualCreditLedgerId) {
                 await tx.ledger.update({
-                    where: { id: salesReturn.customer.ledgerId },
+                    where: { id: actualCreditLedgerId },
                     data: { currentBalance: { increment: salesReturn.totalAmount } }
                 });
             }
@@ -1208,9 +1250,18 @@ const deleteSalesReturnHelper = async (tx, salesReturn, companyId) => {
         });
     }
 
-    if (salesReturn.customer && salesReturn.customer.ledgerId) {
+    const originalTx = await tx.transaction.findFirst({
+        where: {
+            companyId: parseInt(companyId),
+            voucherNumber: salesReturn.autoVoucherNo,
+            voucherType: 'SALES_RETURN'
+        }
+    });
+    const actualCreditLedgerId = originalTx ? originalTx.creditLedgerId : (salesReturn.customer ? salesReturn.customer.ledgerId : null);
+
+    if (actualCreditLedgerId) {
         await tx.ledger.update({
-            where: { id: salesReturn.customer.ledgerId },
+            where: { id: actualCreditLedgerId },
             data: { currentBalance: { increment: salesReturn.totalAmount } }
         });
     }
