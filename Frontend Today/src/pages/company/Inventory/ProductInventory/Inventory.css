@@ -240,7 +240,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 20000;
 }
 
 .Zirak-Inventory-modal-content {
@@ -494,7 +494,7 @@
 
 /* Sub-modals */
 .Zirak-Inventory-sub-modal {
-    z-index: 1500;
+    z-index: 21000;
 }
 
 .Zirak-Inventory-category-modal {

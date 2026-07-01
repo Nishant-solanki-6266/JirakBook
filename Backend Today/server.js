@@ -54,7 +54,7 @@ const searchRoutes = require('./src/routes/searchRoutes');
 
 const prisma = require('./src/config/prisma');
 
-// Force Restart Triggered - 6
+    // Force Restart Triggered - 6
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -68,10 +68,12 @@ console.log(`Database Host Check: ${process.env.DATABASE_URL ? process.env.DATAB
 prisma.$connect()
     .then(() => {
         console.log('✅ Database connected successfully');
+        fs.writeFileSync('C:\\Users\\kiaan\\.gemini\\antigravity-ide\\scratch\\db_conn.log', 'SUCCESS: Database connected successfully');
     })
     .catch((err) => {
         console.error('❌ Database connection failed!');
-        console.error(err);
+        console.error(err.message);
+        fs.writeFileSync('C:\\Users\\kiaan\\.gemini\\antigravity-ide\\scratch\\db_conn.log', `FAILED: ${err.message}\n${err.stack}`);
     });
 
 process.on('uncaughtException', (err) => {

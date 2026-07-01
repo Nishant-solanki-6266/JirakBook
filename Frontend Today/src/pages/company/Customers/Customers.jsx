@@ -99,9 +99,25 @@ const Customers = () => {
         const { name, value, type, checked } = e.target;
 
         setFormData(prev => {
+            let processedValue = type === 'checkbox' ? checked : value;
+
+            if (type !== 'checkbox' && typeof processedValue === 'string') {
+                if (name === 'phone' || name === 'billingPhone' || name === 'shippingPhone') {
+                    processedValue = processedValue.replace(/\D/g, '');
+                } else if (name === 'accountBalance') {
+                    processedValue = processedValue.replace(/-/g, '');
+                    if (processedValue !== '') {
+                        const parsed = parseFloat(processedValue);
+                        if (!isNaN(parsed) && parsed < 0) {
+                            processedValue = '0';
+                        }
+                    }
+                }
+            }
+
             const newData = {
                 ...prev,
-                [name]: type === 'checkbox' ? checked : value
+                [name]: processedValue
             };
 
             // Auto-fill shipping address if "same as billing" is checked
@@ -182,7 +198,11 @@ const Customers = () => {
     const handleShippingAddressChange = (index, field, value) => {
         setFormData(prev => {
             const newAddresses = [...prev.shippingAddresses];
-            newAddresses[index] = { ...newAddresses[index], [field]: value };
+            let processedValue = value;
+            if (field === 'phone' && typeof value === 'string') {
+                processedValue = value.replace(/\D/g, '');
+            }
+            newAddresses[index] = { ...newAddresses[index], [field]: processedValue };
             return { ...prev, shippingAddresses: newAddresses };
         });
     };
@@ -706,6 +726,12 @@ const Customers = () => {
                                             onChange={handleInputChange}
                                             disabled={modalMode === 'view'}
                                             placeholder="0.00"
+                                            min="0"
+                                            onKeyDown={(e) => {
+                                                if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                    e.preventDefault();
+                                                }
+                                            }}
                                         />
                                     </div>
                                     <div className="Customers-form-group Customers-half-width">
