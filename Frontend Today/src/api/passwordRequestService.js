@@ -1,4 +1,4 @@
-import axiosInstance from '../api/axiosInstance';
+import axiosInstance from './axiosInstance';
 
 const getAll = async (companyId) => {
     const url = companyId ? `/password-requests?companyId=${companyId}` : '/password-requests';

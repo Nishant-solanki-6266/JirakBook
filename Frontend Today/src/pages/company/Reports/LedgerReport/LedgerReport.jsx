@@ -32,8 +32,6 @@ const LedgerReport = () => {
 
     // State
 
-    const [hidePOSReceipts, setHidePOSReceipts] = useState(false);
-    const [hidePOSSales, setHidePOSSales] = useState(false);
     const [ledgers, setLedgers] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -771,7 +769,7 @@ const LedgerReport = () => {
         });
 
         return groups;
-    }, [transactions, selectedAccount, dateRange, ledgers, filterType, hidePOSSales, hidePOSReceipts]);
+    }, [transactions, selectedAccount, dateRange, ledgers, filterType, hideInvoice, hideReceipt, enableColors]);
 
     const currentLedgerName = ledgers.find(l => l.id == selectedAccount)?.name || '';
 
