@@ -31,6 +31,9 @@ const LedgerReport = () => {
     const navigate = useNavigate();
 
     // State
+
+    const [hidePOSReceipts, setHidePOSReceipts] = useState(false);
+    const [hidePOSSales, setHidePOSSales] = useState(false);
     const [ledgers, setLedgers] = useState([]);
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -777,11 +780,11 @@ const LedgerReport = () => {
         if (item.typeLabel === 'Opening Balance') return null;
 
         // Check manualStatus: "manual paid blue"
-        const isManual = item.invoice?.manualStatus || 
-                         item.purchaseBill?.manualStatus || 
-                         item.receipt?.manualStatus || 
-                         item.payment?.manualStatus || 
-                         item.posInvoice?.manualStatus;
+        const isManual = item.invoice?.manualStatus ||
+            item.purchaseBill?.manualStatus ||
+            item.receipt?.manualStatus ||
+            item.payment?.manualStatus ||
+            item.posInvoice?.manualStatus;
 
         if (isManual) {
             return {
@@ -965,7 +968,7 @@ const LedgerReport = () => {
                         ) : groupedTransactions.length > 0 ? (
                             groupedTransactions.map((group, index) => (
                                 <React.Fragment key={group.groupKey}>
-                                    <tr 
+                                    <tr
                                         className={group.items.length > 1 ? 'Ledger-grouped-row' : ''}
                                         style={enableColors ? (() => {
                                             const colorStyle = getTransactionColor(group.items && group.items[0]);
@@ -1032,12 +1035,12 @@ const LedgerReport = () => {
                                     {expandedGroups[group.groupKey] && group.items.length > 1 && group.items.map((item, i) => {
                                         const colorStyle = enableColors ? getTransactionColor(item) : null;
                                         return (
-                                            <tr 
-                                                key={`${group.groupKey}-sub-${i}`} 
-                                                className="Ledger-sub-row" 
-                                                style={{ 
-                                                    backgroundColor: colorStyle ? colorStyle.background : '#f8fafc', 
-                                                    fontSize: '0.85rem' 
+                                            <tr
+                                                key={`${group.groupKey}-sub-${i}`}
+                                                className="Ledger-sub-row"
+                                                style={{
+                                                    backgroundColor: colorStyle ? colorStyle.background : '#f8fafc',
+                                                    fontSize: '0.85rem'
                                                 }}
                                             >
                                                 <td style={{ paddingLeft: '2rem', color: '#64748b' }}>
@@ -1061,9 +1064,9 @@ const LedgerReport = () => {
                                                                 </span>
                                                             );
                                                         })()
-                                                     ) : (
+                                                    ) : (
                                                         <span style={{ fontWeight: 500 }}>{formatVoucherType(item.voucherType || group.typeLabel)}</span>
-                                                     )}
+                                                    )}
                                                     <br />
                                                     <span
                                                         style={(item.refNo || group.refNo) && (item.refNo !== '-' || group.refNo !== '-') ? { fontSize: '0.7rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' } : { fontSize: '0.7rem', color: '#94a3b8' }}
