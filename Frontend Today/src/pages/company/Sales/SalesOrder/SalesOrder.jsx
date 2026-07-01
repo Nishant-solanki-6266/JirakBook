@@ -250,6 +250,13 @@ const SalesOrder = () => {
         } catch (error) {
             console.error('Error fetching next order number:', error);
         }
+        
+        if (hasPermission('bypass strict conversion')) {
+            setCreationMode('direct');
+        } else {
+            setCreationMode('linked');
+            setShowQuotationSelect(true);
+        }
         setShowAddModal(true);
     };
 
@@ -508,6 +515,7 @@ const SalesOrder = () => {
     const handleSelectQuotation = (quo) => {
         setSelectedQuotation(quo);
         setCustomerId(quo.customerId);
+        if (quo.notes) setNotes(quo.notes);
         setCustomerDetails({
             billingName: quo.billingName || quo.customer?.billingName || quo.customer?.name || '',
             billingAddress: quo.billingAddress || quo.customer?.billingAddress || '',
@@ -1014,7 +1022,22 @@ const SalesOrder = () => {
                                     </div>
                                 ) : (
                                     <div className="SalesOrder-create-edit-form">
-                                        {/* Mode Selection hidden to enforce direct creation in-module */}
+                                        {hasPermission('bypass strict conversion') && !editingId && (
+                                            <div className="SalesOrder-mode-toggle mb-4 flex gap-2">
+                                                <button 
+                                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${creationMode === 'direct' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                    onClick={() => handleCreationModeToggle('direct')}
+                                                >
+                                                    Direct Order
+                                                </button>
+                                                <button 
+                                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${creationMode === 'linked' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                                                    onClick={() => handleCreationModeToggle('linked')}
+                                                >
+                                                    From Quotation
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {/* Quotation Selection List (Conditional) */}
                                         {creationMode === 'linked' && showQuotationSelect && !selectedQuotation && (

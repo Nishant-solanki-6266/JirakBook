@@ -478,6 +478,15 @@ const GoodsReceipt = () => {
                     });
                     setItems(mappedItems);
                 }
+                
+                if (grn.purchaseOrderId && grn.purchaseorder) {
+                    setSelectedOrder(grn.purchaseorder);
+                } else if (grn.purchaseOrderId) {
+                    setSelectedOrder({ id: grn.purchaseOrderId });
+                } else {
+                    setSelectedOrder(null);
+                }
+
                 let fieldValues = {};
                 if (grn.customFields) {
                     try {
@@ -575,7 +584,7 @@ const GoodsReceipt = () => {
         const payload = {
             companyId,
             grnNumber: grnMeta.grnNumber || `GRN-${Date.now()}`, // Temporary fallback if auto-gen not in backend
-            purchaseOrderId: selectedOrder ? selectedOrder.id : null,
+            purchaseOrderId: selectedOrder ? selectedOrder.id : (editingId ? undefined : null),
             vendorId: parseInt(vendorId),
             date: grnMeta.date,
             customFields: JSON.stringify(customFieldValues),

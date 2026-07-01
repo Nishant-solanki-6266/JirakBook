@@ -60,15 +60,23 @@ export const CompanyProvider = ({ children }) => {
         const locale = localeMap[currencyCode] || 'en-US';
 
         try {
-            return new Intl.NumberFormat(locale, {
+            const isNegative = (amount || 0) < 0;
+            const absAmount = Math.abs(amount || 0);
+            
+            const formatted = new Intl.NumberFormat(locale, {
                 style: 'currency',
                 currency: currencyCode,
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
-            }).format(amount || 0);
+            }).format(absAmount);
+            
+            return isNegative ? `(${formatted})` : formatted;
         } catch (e) {
             // Ultimate fallback for very rare or unsupported currency codes
-            return `${currencyCode} ${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const isNegative = (amount || 0) < 0;
+            const absAmount = Math.abs(amount || 0);
+            const formatted = `${currencyCode} ${absAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return isNegative ? `(${formatted})` : formatted;
         }
     };
 

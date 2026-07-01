@@ -985,6 +985,24 @@ const POS = () => {
                                              </select>
                                          </div>
 
+                                         {/* Warehouse Selector */}
+                                         <div className="companypos-wh-select-container flex-1" style={{ minWidth: '70px' }}>
+                                              <select
+                                                  className="companypos-uom-select"
+                                                  style={{ height: '28px', padding: '0.2rem 0.4rem', fontSize: '0.8rem', width: '100%' }}
+                                                  value={item.warehouseId || ''}
+                                                  onChange={(e) => {
+                                                      const newWhId = e.target.value;
+                                                      setCart(cart.map(c => c.cartItemId === item.cartItemId ? { ...c, warehouseId: newWhId } : c));
+                                                  }}
+                                              >
+                                                  <option value="">WH...</option>
+                                                  {allWarehouses.map(w => (
+                                                      <option key={w.id} value={w.id}>{w.name}</option>
+                                                  ))}
+                                              </select>
+                                         </div>
+
                                          {/* Delete Button */}
                                          <button 
                                              className="companypos-cart-item-delete" 
