@@ -314,7 +314,7 @@ const SalesReturn = () => {
                         const rate = parseFloat(item.rate || 0);
                         const discount = parseFloat(item.discount || 0);
                         const taxRate = parseFloat(item.taxRate || 0);
-                        const taxableAmount = (qty * rate);
+                        const taxableAmount = (qty * rate) - discount;
                         const taxAmount = taxableAmount * (taxRate / 100);
                         const itemAmount = taxableAmount + taxAmount;
 
@@ -620,7 +620,7 @@ const SalesReturn = () => {
                 const rate = parseFloat(item.rate || 0);
                 const discount = parseFloat(item.discount || 0);
                 const taxRate = parseFloat(item.tax || 0);
-                const taxableAmount = (qty * rate);
+                const taxableAmount = (qty * rate) - discount;
                 const taxAmount = taxableAmount * (taxRate / 100);
                 const itemAmount = taxableAmount + taxAmount;
 
@@ -693,7 +693,7 @@ const SalesReturn = () => {
                 const taxRate = parseFloat(item.tax || 0);
                 const discount = parseFloat(item.discount || 0);
 
-                const taxableAmount = (qty * rate);
+                const taxableAmount = Math.max(0, (qty * rate) - discount);
                 const taxAmount = taxableAmount * (taxRate / 100);
                 const itemAmount = taxableAmount + taxAmount;
 
@@ -1049,7 +1049,7 @@ const SalesReturn = () => {
                                             const productIdNum = item.productId ? parseInt(item.productId) : null;
                                             const product = productIdNum ? allProducts.find(p => p.id === productIdNum) : null;
                                             const warehouse = allWarehouses.find(w => w.id === parseInt(item.warehouseId));
-                                            const calculatedAmount = (parseFloat(item.qty || 0) * parseFloat(item.rate || 0)) * (1 + parseFloat(item.tax || 0) / 100);
+                                            const calculatedAmount = (parseFloat(item.qty || 0) * parseFloat(item.rate || 0)) * (1 + parseFloat(item.tax || 0) / 100) - parseFloat(item.discount || 0);
 
                                             // Use invoice products if invoice is selected, otherwise all products
                                             const availableProducts = invoiceProducts.length > 0 ? invoiceProducts : allProducts;
@@ -1362,7 +1362,7 @@ const SalesReturn = () => {
                                             const productIdNum = item.productId ? parseInt(item.productId) : null;
                                             const product = productIdNum ? allProducts.find(p => p.id === productIdNum) : null;
                                             const warehouse = allWarehouses.find(w => w.id === parseInt(item.warehouseId));
-                                            const calculatedAmount = (parseFloat(item.qty || 0) * parseFloat(item.rate || 0)) * (1 + parseFloat(item.tax || 0) / 100);
+                                            const calculatedAmount = (parseFloat(item.qty || 0) * parseFloat(item.rate || 0)) * (1 + parseFloat(item.tax || 0) / 100) - parseFloat(item.discount || 0);
 
                                             // Use invoice products if invoice is selected, otherwise all products
                                             const availableProducts = invoiceProducts.length > 0 ? invoiceProducts : allProducts;

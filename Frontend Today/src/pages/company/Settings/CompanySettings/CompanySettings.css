@@ -53,9 +53,6 @@
     border-bottom: 1px solid #e2e8f0;
     padding: 0 1.5rem;
     background: #f8fafc;
-    overflow-x: auto;
-    white-space: nowrap;
-    flex-wrap: nowrap;
 }
 
 .companySetting-tab-btn {
@@ -68,8 +65,6 @@
     cursor: pointer;
     font-size: 0.95rem;
     transition: all 0.2s;
-    white-space: nowrap;
-    flex-shrink: 0;
 }
 
 .companySetting-tab-btn:hover {
@@ -665,22 +660,24 @@
 
     /* Tabs */
     .companySetting-settings-tabs {
-        flex-direction: row;
-        flex-wrap: nowrap;
-        overflow-x: auto;
+        flex-direction: column;
+        /* Stack tabs if names are long or many */
+        /* OR keep horizontal but scrollable:  */
+        /* overflow-x: auto; flex-wrap: nowrap; */
+        /* Let's stack for better clickable area */
         padding: 0;
     }
 
     .companySetting-tab-btn {
-        width: auto;
-        text-align: center;
-        border-bottom: 2px solid transparent;
-        border-left: none;
-        padding: 0.75rem 1rem;
+        width: 100%;
+        text-align: left;
+        border-bottom: 1px solid #e2e8f0;
+        border-left: 4px solid transparent;
     }
 
     .companySetting-tab-btn.active {
-        border-bottom-color: #8ce043;
+        border-bottom-color: #e2e8f0;
+        border-left-color: #8ce043;
         background: #f1f5f9;
         color: #8ce043;
     }
