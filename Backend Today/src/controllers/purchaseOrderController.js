@@ -504,13 +504,40 @@ const convertToGRN = async (req, res) => {
             const numbering = await numberingService.getNextNumber(companyId, 'goodsreceiptnote');
             const grnNumber = numbering.formattedNumber;
 
-            // Copy items
-            const grnItems = physicalItems.map(item => ({
-                productId: item.productId,
-                warehouseId: item.warehouseId || 1,
-                quantity: item.quantity,
-                description: item.description || ''
-            }));
+            // Calculate already delivered quantities
+            const existingGrns = await tx.goodsreceiptnote.findMany({
+                where: { purchaseOrderId: order.id },
+                include: { goodsreceiptnoteitem: true }
+            });
+            const deliveredMap = {};
+            for (const grn of existingGrns) {
+                for (const item of grn.goodsreceiptnoteitem) {
+                    if (item.productId) {
+                        deliveredMap[item.productId] = (deliveredMap[item.productId] || 0) + item.quantity;
+                    }
+                }
+            }
+
+            // Copy items (subtracting delivered)
+            const grnItems = [];
+            for (const item of physicalItems) {
+                const ordered = item.quantity;
+                const delivered = deliveredMap[item.productId] || 0;
+                const remaining = ordered - delivered;
+                
+                if (remaining > 0) {
+                    grnItems.push({
+                        productId: item.productId,
+                        warehouseId: item.warehouseId || 1,
+                        quantity: remaining,
+                        description: item.description || ''
+                    });
+                }
+            }
+            
+            if (grnItems.length === 0) {
+                throw new Error('All physical products in this Purchase Order have already been fully received.');
+            }
 
             // Create Goods Receipt Note
             const grn = await tx.goodsreceiptnote.create({

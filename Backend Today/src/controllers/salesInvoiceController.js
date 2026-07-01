@@ -154,7 +154,7 @@ const adjustInvoiceWithReturns = (invoice) => {
 // Create Sales Invoice
 const createInvoice = async (req, res) => {
     try {
-        const { invoiceNumber, date, dueDate, customerId, salesOrderId, deliveryChallanId, items, notes, taxAmount, overallDiscount, overallDiscountType, billingName, billingAddress, billingCity, billingState, billingZipCode, billingCountry, shippingName, shippingAddress, shippingCity, shippingState, shippingZipCode, shippingCountry, currency, exchangeRate, manualStatus, status } = req.body;
+        const { invoiceNumber, manualReference, date, dueDate, customerId, salesOrderId, deliveryChallanId, items, notes, taxAmount, overallDiscount, overallDiscountType, billingName, billingAddress, billingCity, billingState, billingZipCode, billingCountry, shippingName, shippingAddress, shippingCity, shippingState, shippingZipCode, shippingCountry, currency, exchangeRate, manualStatus, status } = req.body;
         // Fallback to req.body.companyId if req.user is missing (custom frontend case)
         const companyId = req.user?.companyId || req.body.companyId;
 
@@ -299,6 +299,7 @@ const createInvoice = async (req, res) => {
                 data: {
                     customFields: req.body.customFields ? (typeof req.body.customFields === 'string' ? req.body.customFields : JSON.stringify(req.body.customFields)) : null,
                     invoiceNumber,
+                    manualReference,
                     date: new Date(date),
                     dueDate: dueDate ? new Date(dueDate) : null,
                     customerId: parseInt(customerId),
@@ -415,46 +416,81 @@ const createInvoice = async (req, res) => {
                         data: { status: 'DELIVERED' } // Marks as completed
                     });
 
-                    // If Challan only RESERVED, we must ISSUE now
-                    if (config.challanAction === 'RESERVE') {
-                        for (const item of invoiceItems) {
-                            if (item.productId && item.warehouseId) {
-                                const prod = await tx.product.findUnique({
-                                    where: { id: item.productId },
-                                    include: { uom: true }
-                                });
-                                const transUom = item.uomId ? await tx.uom.findUnique({ where: { id: item.uomId } }) : null;
-                                const baseQty = convertToBaseQuantity(item.quantity, transUom, prod?.uom);
+                    // Create a map of challan items and their quantities (in base UOM)
+                    const challanQtyMap = {};
+                    for (const cItem of challan.deliverychallanitem) {
+                        if (cItem.productId && cItem.warehouseId) {
+                            const prod = await tx.product.findUnique({
+                                where: { id: cItem.productId },
+                                include: { uom: true }
+                            });
+                            const transUom = cItem.uomId ? await tx.uom.findUnique({ where: { id: cItem.uomId } }) : null;
+                            const baseQty = convertToBaseQuantity(cItem.quantity, transUom, prod?.uom);
+                            const key = `${cItem.productId}_${cItem.warehouseId}`;
+                            challanQtyMap[key] = (challanQtyMap[key] || 0) + baseQty;
+                        }
+                    }
 
-                                // 1. Clear Challan Reservation
-                                await tx.stock.upsert({
-                                    where: { warehouseId_productId: { warehouseId: item.warehouseId, productId: item.productId } },
-                                    create: {
-                                        warehouseId: item.warehouseId,
-                                        productId: item.productId,
-                                        reservedQuantity: -baseQty,
-                                        quantity: -baseQty,
-                                        initialQty: 0,
-                                        minOrderQty: 0
-                                    },
-                                    update: {
-                                        reservedQuantity: { decrement: baseQty },
-                                        quantity: { decrement: baseQty }
-                                    }
-                                });
+                    for (const item of invoiceItems) {
+                        if (item.productId && item.warehouseId) {
+                            const prod = await tx.product.findUnique({
+                                where: { id: item.productId },
+                                include: { uom: true }
+                            });
+                            const transUom = item.uomId ? await tx.uom.findUnique({ where: { id: item.uomId } }) : null;
+                            const invBaseQty = convertToBaseQuantity(item.quantity, transUom, prod?.uom);
+                            
+                            const key = `${item.productId}_${item.warehouseId}`;
+                            const challanHandledQty = challanQtyMap[key] || 0;
 
-                                // 2. Log Transaction
+                            if (config.challanAction === 'RESERVE') {
+                                // Clear reservation for the portion that was in challan
+                                const qtyToClear = Math.min(invBaseQty, challanHandledQty);
+                                if (qtyToClear > 0) {
+                                    await tx.stock.upsert({
+                                        where: { warehouseId_productId: { warehouseId: item.warehouseId, productId: item.productId } },
+                                        create: { warehouseId: item.warehouseId, productId: item.productId, reservedQuantity: -qtyToClear, quantity: -qtyToClear, initialQty: 0, minOrderQty: 0 },
+                                        update: { reservedQuantity: { decrement: qtyToClear }, quantity: { decrement: qtyToClear } }
+                                    });
+                                }
+                                
+                                // The remaining 'extra' quantity directly ISSUED (decremented) from stock
+                                const extraQty = invBaseQty - qtyToClear;
+                                if (extraQty > 0) {
+                                    await tx.stock.upsert({
+                                        where: { warehouseId_productId: { warehouseId: item.warehouseId, productId: item.productId } },
+                                        create: { warehouseId: item.warehouseId, productId: item.productId, quantity: -extraQty, initialQty: 0, minOrderQty: 0 },
+                                        update: { quantity: { decrement: extraQty } }
+                                    });
+                                }
+                                
+                                challanQtyMap[key] -= qtyToClear;
+
                                 await tx.inventorytransaction.create({
                                     data: {
-                                        type: 'SALE',
-                                        productId: item.productId,
-                                        fromWarehouseId: item.warehouseId,
-                                        quantity: baseQty,
-                                        reason: `Invoice from Reserved Challan: ${invoiceNumber}`,
-                                        companyId: parseInt(companyId),
-                                        userId: req.user?.userId || null
+                                        type: 'SALE', productId: item.productId, fromWarehouseId: item.warehouseId,
+                                        quantity: invBaseQty, reason: `Invoice from Reserved Challan: ${invoiceNumber}`,
+                                        companyId: parseInt(companyId), userId: req.user?.userId || null
                                     }
                                 });
+                            } else if (config.challanAction === 'ISSUE') {
+                                // Issue only EXTRA stock
+                                const extraQty = Math.max(0, invBaseQty - challanHandledQty);
+                                if (extraQty > 0) {
+                                    await tx.stock.upsert({
+                                        where: { warehouseId_productId: { warehouseId: item.warehouseId, productId: item.productId } },
+                                        create: { warehouseId: item.warehouseId, productId: item.productId, quantity: -extraQty, initialQty: 0, minOrderQty: 0 },
+                                        update: { quantity: { decrement: extraQty } }
+                                    });
+                                    await tx.inventorytransaction.create({
+                                        data: {
+                                            type: 'SALE', productId: item.productId, fromWarehouseId: item.warehouseId,
+                                            quantity: extraQty, reason: `Extra items in Invoice from Challan: ${invoiceNumber}`,
+                                            companyId: parseInt(companyId), userId: req.user?.userId || null
+                                        }
+                                    });
+                                }
+                                challanQtyMap[key] = Math.max(0, challanHandledQty - invBaseQty);
                             }
                         }
                     }
@@ -1403,6 +1439,7 @@ const updateInvoice = async (req, res) => {
                 data: {
                     customFields: req.body.customFields !== undefined ? (typeof req.body.customFields === 'string' ? req.body.customFields : JSON.stringify(req.body.customFields)) : undefined,
                     invoiceNumber: data.invoiceNumber,
+                    manualReference: data.manualReference,
                     date: data.date ? new Date(data.date) : undefined,
                     dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
                     customerId: data.customerId ? parseInt(data.customerId) : undefined,

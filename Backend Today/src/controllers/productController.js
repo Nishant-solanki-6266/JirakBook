@@ -690,6 +690,20 @@ const deleteProduct = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
 
+        // Prevent deletion if transactions exist
+        const hasInvoice = await prisma.invoiceitem.findFirst({ where: { productId: parseInt(id) } });
+        const hasPos = await prisma.posinvoiceitem.findFirst({ where: { productId: parseInt(id) } });
+        const hasPurchase = await prisma.purchasebillitem.findFirst({ where: { productId: parseInt(id) } });
+        const hasDeliveryChallan = await prisma.deliverychallanitem.findFirst({ where: { productId: parseInt(id) } });
+        const hasGrn = await prisma.goodsreceiptnoteitem.findFirst({ where: { productId: parseInt(id) } });
+
+        if (hasInvoice || hasPos || hasPurchase || hasDeliveryChallan || hasGrn) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Cannot delete product because it is used in transactions (Invoices, Bills, etc.).' 
+            });
+        }
+
         // Clean up Opening Stock transactions for this product
         try {
             const openingStockTxns = await prisma.transaction.findMany({

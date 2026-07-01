@@ -300,7 +300,8 @@ exports.Prisma.DeliverychallanScalarFieldEnum = {
   carrier: 'carrier',
   transportNote: 'transportNote',
   remarks: 'remarks',
-  customFields: 'customFields'
+  customFields: 'customFields',
+  invoiceId: 'invoiceId'
 };
 
 exports.Prisma.DeliverychallanitemScalarFieldEnum = {
@@ -411,6 +412,7 @@ exports.Prisma.InventorytransactionScalarFieldEnum = {
 exports.Prisma.InvoiceScalarFieldEnum = {
   id: 'id',
   invoiceNumber: 'invoiceNumber',
+  manualReference: 'manualReference',
   date: 'date',
   dueDate: 'dueDate',
   customerId: 'customerId',

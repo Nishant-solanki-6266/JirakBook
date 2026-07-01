@@ -271,15 +271,18 @@ model deliverychallan {
   transportNote       String?                @db.Text
   remarks             String?                @db.Text
   customFields        String?                @db.Text
+  invoiceId           Int?
   company             company                @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "DeliveryChallan_companyId_fkey")
   customer            customer               @relation(fields: [customerId], references: [id], map: "DeliveryChallan_customerId_fkey")
   salesorder          salesorder?            @relation(fields: [salesOrderId], references: [id], map: "DeliveryChallan_salesOrderId_fkey")
+  invoice_for_dc      invoice?               @relation("dc_to_invoice", fields: [invoiceId], references: [id], onDelete: SetNull)
   deliverychallanitem deliverychallanitem[]
   invoice             invoice[]
 
   @@unique([companyId, challanNumber], map: "DeliveryChallan_companyId_challanNumber_key")
   @@index([customerId], map: "DeliveryChallan_customerId_fkey")
   @@index([salesOrderId], map: "DeliveryChallan_salesOrderId_fkey")
+  @@index([invoiceId], map: "DeliveryChallan_invoiceId_fkey")
 }
 
 model deliverychallanitem {
@@ -443,6 +446,7 @@ model inventorytransaction {
 model invoice {
   id                    Int                        @id @default(autoincrement())
   invoiceNumber         String
+  manualReference       String?
   date                  DateTime                   @default(now())
   dueDate               DateTime?
   customerId            Int
@@ -479,8 +483,9 @@ model invoice {
   customFields          String?                    @db.Text
   company               company                    @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "Invoice_companyId_fkey")
   customer              customer                   @relation(fields: [customerId], references: [id], onDelete: Cascade, map: "Invoice_customerId_fkey")
-  deliverychallan       deliverychallan?           @relation(fields: [deliveryChallanId], references: [id], onDelete: Cascade, map: "Invoice_deliveryChallanId_fkey")
+  deliverychallan       deliverychallan?           @relation(fields: [deliveryChallanId], references: [id], onDelete: SetNull, map: "Invoice_deliveryChallanId_fkey")
   salesorder            salesorder?                @relation(fields: [salesOrderId], references: [id], onDelete: Cascade, map: "Invoice_salesOrderId_fkey")
+  deliverychallans      deliverychallan[]          @relation("dc_to_invoice")
   invoiceitem           invoiceitem[]
   receipt               receipt[]
   salesreturn           salesreturn[]

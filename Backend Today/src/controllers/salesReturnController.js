@@ -33,7 +33,7 @@ const createReturn = async (req, res) => {
             const rate = parseFloat(item.rate) || 0;
             const discount = parseFloat(item.discount) || 0;
             const taxRate = parseFloat(item.taxRate) || 0;
-            const taxableAmount = Math.max(0, (qty * rate) - discount);
+            const taxableAmount = (qty * rate);
             const taxAmount = (taxableAmount * taxRate) / 100;
             const amount = taxableAmount + taxAmount;
             
@@ -73,18 +73,17 @@ const createReturn = async (req, res) => {
         }
         console.log(`[createReturn] isPosInvoice: ${isPosInvoice}, invoiceId: ${invoiceId}`);
 
-        let customFieldsObj = {};
+        let initialCustomFieldsObj = {};
         if (customFields) {
             try {
-                customFieldsObj = typeof customFields === 'string' ? JSON.parse(customFields) : customFields;
+                initialCustomFieldsObj = typeof customFields === 'string' ? JSON.parse(customFields) : customFields;
             } catch (e) {
                 console.error("Error parsing customFields:", e);
             }
         }
         if (isPosInvoice) {
-            customFieldsObj.posInvoiceId = posInvoice.id;
+            initialCustomFieldsObj.posInvoiceId = posInvoice.id;
         }
-        const finalCustomFields = JSON.stringify(customFieldsObj);
 
         const result = await prisma.$transaction(async (tx) => {
             console.log("[createReturn] tx: Resolving returnLedger...");
@@ -123,6 +122,36 @@ const createReturn = async (req, res) => {
 
             const autoVoucherNo = await getAutoVoucherNo(companyId);
             console.log(`[createReturn] tx: Generated autoVoucherNo: ${autoVoucherNo}`);
+
+            // Determine Unpaid Amount and Splits
+            let unpaidAmount = 0;
+            if (invoiceId) {
+                if (isPosInvoice && posInvoice) {
+                    unpaidAmount = posInvoice.balanceAmount;
+                } else {
+                    const invoice = await tx.invoice.findUnique({ where: { id: parseInt(invoiceId) } });
+                    if (invoice) unpaidAmount = invoice.balanceAmount;
+                }
+            } else {
+                unpaidAmount = totalAmount; // No invoice means full AR reduction
+            }
+
+            const arReduction = Math.min(unpaidAmount, totalAmount);
+            const cashRefund = totalAmount - arReduction;
+
+            let cashLedger = null;
+            if (cashRefund > 0) {
+                cashLedger = await tx.ledger.findFirst({
+                    where: { companyId: parseInt(companyId), name: { contains: 'Cash' }, accountgroup: { type: 'ASSETS' } }
+                });
+                if (!cashLedger) cashLedger = await resolveLedger(tx, 'Cash', 'ASSETS');
+            }
+
+            initialCustomFieldsObj.arReduction = arReduction;
+            initialCustomFieldsObj.cashRefund = cashRefund;
+            if (cashLedger) initialCustomFieldsObj.cashLedgerId = cashLedger.id;
+            
+            const finalCustomFields = JSON.stringify(initialCustomFieldsObj);
 
             // 1. Create Sales Return
             console.log("[createReturn] tx: Creating salesreturn record...");
@@ -220,11 +249,21 @@ const createReturn = async (req, res) => {
                 data: { currentBalance: { increment: returnedSubtotal } }
             });
 
-            // CR Customer (net portion: subtotal + tax - discount)
-            await tx.ledger.update({
-                where: { id: customer.ledgerId },
-                data: { currentBalance: { decrement: totalAmount } }
-            });
+            // CR Customer (AR Reduction portion)
+            if (arReduction > 0) {
+                await tx.ledger.update({
+                    where: { id: customer.ledgerId },
+                    data: { currentBalance: { decrement: arReduction } }
+                });
+            }
+
+            // CR Cash/Bank (Cash Refund portion)
+            if (cashRefund > 0 && cashLedger) {
+                await tx.ledger.update({
+                    where: { id: cashLedger.id },
+                    data: { currentBalance: { decrement: cashRefund } }
+                });
+            }
 
             // DR Tax Payable (VAT)
             if (returnedTax > 0 && taxLedger) {
@@ -242,56 +281,46 @@ const createReturn = async (req, res) => {
                 });
             }
 
-            // Entry 1: DR Sales Return, CR Customer (gross portion)
-            await tx.transaction.create({
-                data: {
-                    date: new Date(date),
-                    voucherType: 'SALES_RETURN',
-                    voucherNumber: autoVoucherNo,
-                    debitLedgerId: returnLedger.id,
-                    creditLedgerId: customer.ledgerId,
-                    amount: returnedSubtotal,
-                    narration: `Sales Return (Revenue portion) from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
-                    companyId: parseInt(companyId),
-                    invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
-                    posInvoiceId: isPosInvoice ? parseInt(invoiceId) : null
-                }
-            });
+            // Match Debits and Credits iteratively to create properly balanced transactions
+            const debits = [
+                { ledgerId: returnLedger.id, amount: returnedSubtotal, type: 'Sales Return' },
+                { ledgerId: taxLedger?.id, amount: returnedTax, type: 'Tax' }
+            ].filter(d => d.amount > 0 && d.ledgerId);
 
-            // Entry 2 (if tax > 0): DR Tax Payable, CR Customer
-            if (returnedTax > 0 && taxLedger) {
+            const credits = [
+                { ledgerId: discountAllowedLedger?.id, amount: returnedDiscount, type: 'Discount' },
+                { ledgerId: customer.ledgerId, amount: arReduction, type: 'Customer' },
+                { ledgerId: cashLedger?.id, amount: cashRefund, type: 'Cash' }
+            ].filter(c => c.amount > 0 && c.ledgerId);
+
+            let dIdx = 0;
+            let cIdx = 0;
+
+            while (dIdx < debits.length && cIdx < credits.length) {
+                const d = debits[dIdx];
+                const c = credits[cIdx];
+                const amount = Math.min(d.amount, c.amount);
+
                 await tx.transaction.create({
                     data: {
                         date: new Date(date),
                         voucherType: 'SALES_RETURN',
                         voucherNumber: autoVoucherNo,
-                        debitLedgerId: taxLedger.id,
-                        creditLedgerId: customer.ledgerId,
-                        amount: returnedTax,
-                        narration: `Sales Return Tax Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
+                        debitLedgerId: d.ledgerId,
+                        creditLedgerId: c.ledgerId,
+                        amount: amount,
+                        narration: `Sales Return from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
                         invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
                         posInvoiceId: isPosInvoice ? parseInt(invoiceId) : null
                     }
                 });
-            }
 
-            // Entry 3 (if discount > 0): DR Customer, CR Discount Allowed on Sale
-            if (returnedDiscount > 0 && discountAllowedLedger) {
-                await tx.transaction.create({
-                    data: {
-                        date: new Date(date),
-                        voucherType: 'SALES_RETURN',
-                        voucherNumber: autoVoucherNo,
-                        debitLedgerId: customer.ledgerId,
-                        creditLedgerId: discountAllowedLedger.id,
-                        amount: returnedDiscount,
-                        narration: `Sales Return Discount Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
-                        companyId: parseInt(companyId),
-                        invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
-                        posInvoiceId: isPosInvoice ? parseInt(invoiceId) : null
-                    }
-                });
+                d.amount -= amount;
+                c.amount -= amount;
+
+                if (d.amount <= 0.001) dIdx++;
+                if (c.amount <= 0.001) cIdx++;
             }
             console.log("[createReturn] tx: Detailed double-entry financial transactions complete.");
 
@@ -493,7 +522,7 @@ const updateReturn = async (req, res) => {
             const rate = parseFloat(item.rate) || 0;
             const discount = parseFloat(item.discount) || 0;
             const taxRate = parseFloat(item.taxRate) || 0;
-            const taxableAmount = Math.max(0, (qty * rate) - discount);
+            const taxableAmount = (qty * rate);
             const taxAmount = (taxableAmount * taxRate) / 100;
             const amount = taxableAmount + taxAmount;
             
@@ -527,6 +556,10 @@ const updateReturn = async (req, res) => {
 
         // Parse existing customFields to check for posInvoiceId
         let existingPosInvoiceId = null;
+        let oldArReduction = existing.totalAmount;
+        let oldCashRefund = 0;
+        let oldCashLedgerId = null;
+
         if (existing.customFields) {
             try {
                 const parsedCF = typeof existing.customFields === 'string'
@@ -535,25 +568,29 @@ const updateReturn = async (req, res) => {
                 if (parsedCF && parsedCF.posInvoiceId) {
                     existingPosInvoiceId = parseInt(parsedCF.posInvoiceId);
                 }
+                if (parsedCF) {
+                    if (parsedCF.arReduction !== undefined) oldArReduction = parsedCF.arReduction;
+                    if (parsedCF.cashRefund !== undefined) oldCashRefund = parsedCF.cashRefund;
+                    if (parsedCF.cashLedgerId !== undefined) oldCashLedgerId = parsedCF.cashLedgerId;
+                }
             } catch (e) {
                 console.error("Error parsing existing customFields:", e);
             }
         }
 
-        let customFieldsObj = {};
+        let initialCustomFieldsObj = {};
         if (customFields) {
             try {
-                customFieldsObj = typeof customFields === 'string' ? JSON.parse(customFields) : customFields;
+                initialCustomFieldsObj = typeof customFields === 'string' ? JSON.parse(customFields) : customFields;
             } catch (e) {
                 console.error("Error parsing customFields on update:", e);
             }
         }
         if (isPosInvoice) {
-            customFieldsObj.posInvoiceId = posInvoice.id;
+            initialCustomFieldsObj.posInvoiceId = posInvoice.id;
         } else {
-            delete customFieldsObj.posInvoiceId;
+            delete initialCustomFieldsObj.posInvoiceId;
         }
-        const finalCustomFields = JSON.stringify(customFieldsObj);
 
         const result = await prisma.$transaction(async (tx) => {
             const resolveLedger = async (txOrPrisma, namePattern, type) => {
@@ -660,10 +697,17 @@ const updateReturn = async (req, res) => {
                 });
             }
 
-            if (existing.customer && existing.customer.ledgerId) {
+            if (existing.customer && existing.customer.ledgerId && oldArReduction > 0) {
                 await tx.ledger.update({
                     where: { id: existing.customer.ledgerId },
-                    data: { currentBalance: { increment: existing.totalAmount } }
+                    data: { currentBalance: { increment: oldArReduction } }
+                });
+            }
+
+            if (oldCashRefund > 0 && oldCashLedgerId) {
+                await tx.ledger.update({
+                    where: { id: oldCashLedgerId },
+                    data: { currentBalance: { increment: oldCashRefund } }
                 });
             }
 
@@ -718,6 +762,36 @@ const updateReturn = async (req, res) => {
             await tx.salesreturnitem.deleteMany({
                 where: { salesReturnId: parseInt(id) }
             });
+
+            // Determine Unpaid Amount and Splits for new data
+            let unpaidAmount = 0;
+            if (invoiceId) {
+                if (isPosInvoice && posInvoice) {
+                    unpaidAmount = posInvoice.balanceAmount;
+                } else {
+                    const invoice = await tx.invoice.findUnique({ where: { id: parseInt(invoiceId) } });
+                    if (invoice) unpaidAmount = invoice.balanceAmount;
+                }
+            } else {
+                unpaidAmount = totalAmount; // No invoice means full AR reduction
+            }
+
+            const arReduction = Math.min(unpaidAmount, totalAmount);
+            const cashRefund = totalAmount - arReduction;
+
+            let cashLedger = null;
+            if (cashRefund > 0) {
+                cashLedger = await tx.ledger.findFirst({
+                    where: { companyId: parseInt(companyId), name: { contains: 'Cash' }, accountgroup: { type: 'ASSETS' } }
+                });
+                if (!cashLedger) cashLedger = await resolveLedger(tx, 'Cash', 'ASSETS');
+            }
+
+            initialCustomFieldsObj.arReduction = arReduction;
+            initialCustomFieldsObj.cashRefund = cashRefund;
+            if (cashLedger) initialCustomFieldsObj.cashLedgerId = cashLedger.id;
+            
+            const finalCustomFields = JSON.stringify(initialCustomFieldsObj);
 
             // 4. Update Sales Return Document
             const updated = await tx.salesreturn.update({
@@ -808,11 +882,21 @@ const updateReturn = async (req, res) => {
                 data: { currentBalance: { increment: returnedSubtotal } }
             });
 
-            // CR Customer (net portion: subtotal + tax - discount)
-            await tx.ledger.update({
-                where: { id: customer.ledgerId },
-                data: { currentBalance: { decrement: totalAmount } }
-            });
+            // CR Customer (AR Reduction portion)
+            if (arReduction > 0) {
+                await tx.ledger.update({
+                    where: { id: customer.ledgerId },
+                    data: { currentBalance: { decrement: arReduction } }
+                });
+            }
+
+            // CR Cash/Bank (Cash Refund portion)
+            if (cashRefund > 0 && cashLedger) {
+                await tx.ledger.update({
+                    where: { id: cashLedger.id },
+                    data: { currentBalance: { decrement: cashRefund } }
+                });
+            }
 
             // DR Tax Payable (VAT)
             if (returnedTax > 0 && taxLedger) {
@@ -830,56 +914,46 @@ const updateReturn = async (req, res) => {
                 });
             }
 
-            // Entry 1: DR Sales Return, CR Customer (gross portion)
-            await tx.transaction.create({
-                data: {
-                    date: new Date(date),
-                    voucherType: 'SALES_RETURN',
-                    voucherNumber: existing.autoVoucherNo,
-                    debitLedgerId: returnLedger.id,
-                    creditLedgerId: customer.ledgerId,
-                    amount: returnedSubtotal,
-                    narration: `Sales Return (Revenue portion) from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
-                    companyId: parseInt(companyId),
-                    invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
-                    posInvoiceId: isPosInvoice ? parseInt(invoiceId) : null
-                }
-            });
+            // Match Debits and Credits iteratively to create properly balanced transactions
+            const debits = [
+                { ledgerId: returnLedger.id, amount: returnedSubtotal, type: 'Sales Return' },
+                { ledgerId: taxLedger?.id, amount: returnedTax, type: 'Tax' }
+            ].filter(d => d.amount > 0 && d.ledgerId);
 
-            // Entry 2 (if tax > 0): DR Tax Payable, CR Customer
-            if (returnedTax > 0 && taxLedger) {
+            const credits = [
+                { ledgerId: discountAllowedLedger?.id, amount: returnedDiscount, type: 'Discount' },
+                { ledgerId: customer.ledgerId, amount: arReduction, type: 'Customer' },
+                { ledgerId: cashLedger?.id, amount: cashRefund, type: 'Cash' }
+            ].filter(c => c.amount > 0 && c.ledgerId);
+
+            let dIdx = 0;
+            let cIdx = 0;
+
+            while (dIdx < debits.length && cIdx < credits.length) {
+                const d = debits[dIdx];
+                const c = credits[cIdx];
+                const amount = Math.min(d.amount, c.amount);
+
                 await tx.transaction.create({
                     data: {
                         date: new Date(date),
                         voucherType: 'SALES_RETURN',
                         voucherNumber: existing.autoVoucherNo,
-                        debitLedgerId: taxLedger.id,
-                        creditLedgerId: customer.ledgerId,
-                        amount: returnedTax,
-                        narration: `Sales Return Tax Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
+                        debitLedgerId: d.ledgerId,
+                        creditLedgerId: c.ledgerId,
+                        amount: amount,
+                        narration: `Sales Return from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
                         invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
                         posInvoiceId: isPosInvoice ? parseInt(invoiceId) : null
                     }
                 });
-            }
 
-            // Entry 3 (if discount > 0): DR Customer, CR Discount Allowed on Sale
-            if (returnedDiscount > 0 && discountAllowedLedger) {
-                await tx.transaction.create({
-                    data: {
-                        date: new Date(date),
-                        voucherType: 'SALES_RETURN',
-                        voucherNumber: existing.autoVoucherNo,
-                        debitLedgerId: customer.ledgerId,
-                        creditLedgerId: discountAllowedLedger.id,
-                        amount: returnedDiscount,
-                        narration: `Sales Return Discount Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
-                        companyId: parseInt(companyId),
-                        invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
-                        posInvoiceId: isPosInvoice ? parseInt(invoiceId) : null
-                    }
-                });
+                d.amount -= amount;
+                c.amount -= amount;
+
+                if (d.amount <= 0.001) dIdx++;
+                if (c.amount <= 0.001) cIdx++;
             }
 
             // 8. COGS and Inventory Reversal (DR Inventory, CR COGS)
@@ -971,6 +1045,10 @@ const deleteReturn = async (req, res) => {
 
             // 2. Reverse Invoice Balance update if linked
             let existingPosInvoiceId = null;
+            let oldArReduction = salesReturn.totalAmount;
+            let oldCashRefund = 0;
+            let oldCashLedgerId = null;
+
             if (salesReturn.customFields) {
                 try {
                     const parsedCF = typeof salesReturn.customFields === 'string'
@@ -978,6 +1056,11 @@ const deleteReturn = async (req, res) => {
                         : salesReturn.customFields;
                     if (parsedCF && parsedCF.posInvoiceId) {
                         existingPosInvoiceId = parseInt(parsedCF.posInvoiceId);
+                    }
+                    if (parsedCF) {
+                        if (parsedCF.arReduction !== undefined) oldArReduction = parsedCF.arReduction;
+                        if (parsedCF.cashRefund !== undefined) oldCashRefund = parsedCF.cashRefund;
+                        if (parsedCF.cashLedgerId !== undefined) oldCashLedgerId = parsedCF.cashLedgerId;
                     }
                 } catch (e) {
                     console.error("Error parsing salesReturn customFields on delete:", e);
@@ -1060,10 +1143,17 @@ const deleteReturn = async (req, res) => {
                 });
             }
 
-            if (salesReturn.customer && salesReturn.customer.ledgerId) {
+            if (salesReturn.customer && salesReturn.customer.ledgerId && oldArReduction > 0) {
                 await tx.ledger.update({
                     where: { id: salesReturn.customer.ledgerId },
-                    data: { currentBalance: { increment: salesReturn.totalAmount } }
+                    data: { currentBalance: { increment: oldArReduction } }
+                });
+            }
+
+            if (oldCashRefund > 0 && oldCashLedgerId) {
+                await tx.ledger.update({
+                    where: { id: oldCashLedgerId },
+                    data: { currentBalance: { increment: oldCashRefund } }
                 });
             }
 
