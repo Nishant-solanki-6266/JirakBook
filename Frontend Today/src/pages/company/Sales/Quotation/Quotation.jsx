@@ -21,6 +21,15 @@ import GetCompanyId from '../../../../api/GetCompanyId';
 import { useReactToPrint } from 'react-to-print';
 import { CompanyContext } from '../../../../context/CompanyContext';
 import uomService from '../../../../services/uomService';
+import '../../Customers/Customers.css';
+import '../../Inventory/ProductInventory/Inventory.css';
+import '../../Inventory/UOM/UOM.css';
+import customerServiceFromServices from '../../../../services/customerService';
+import productServiceFromServices from '../../../../services/productService';
+import categoryService from '../../../../services/categoryService';
+import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
+import axiosInstance from '../../../../api/axiosInstance';
+import { Upload, Loader2 } from 'lucide-react';
 
 const Quotation = () => {
     // --- State Management ---
@@ -56,6 +65,102 @@ const Quotation = () => {
     const [isViewMode, setIsViewMode] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteId, setDeleteId] = useState(null);
+
+    // Full Add Customer & Product Modal States
+    const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+    const [showAddProductModal, setShowAddProductModal] = useState(false);
+
+    // Customer Modal States
+    const [customerFormData, setCustomerFormData] = useState({
+        name: '',
+        nameArabic: '',
+        companyName: '',
+        companyLocation: '',
+        profileImage: '',
+        anyFile: '',
+        accountType: 'Credit',
+        balanceType: 'Debit',
+        accountBalance: 0,
+        creationDate: new Date().toISOString().split('T')[0],
+        bankAccountNumber: '',
+        bankIFSC: '',
+        bankNameBranch: '',
+        phone: '',
+        email: '',
+        creditPeriod: '',
+        gstNumber: '',
+        gstEnabled: false,
+        billingName: '',
+        billingPhone: '',
+        billingAddress: '',
+        billingCity: '',
+        billingState: '',
+        billingCountry: '',
+        billingZipCode: '',
+        shippingSameAsBilling: false,
+        shippingName: '',
+        shippingPhone: '',
+        shippingAddress: '',
+        shippingCity: '',
+        shippingState: '',
+        shippingCountry: '',
+        shippingZipCode: '',
+        shippingAddresses: []
+    });
+    const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
+    const [uploadingAnyFile, setUploadingAnyFile] = useState(false);
+    const profileImageRef = useRef();
+    const anyFileRef = useRef();
+
+    // Product Modal States
+    const [productFormData, setProductFormData] = useState({
+        name: '', sku: '', hsn: '', barcode: '', categoryId: '',
+        uomId: '', purchaseUomId: '', salesUomId: '', unit: '', description: '', asOfDate: new Date().toISOString().split('T')[0],
+        taxAccount: '', initialCost: 0, salePrice: 0, purchasePrice: 0,
+        discount: 0, remarks: '', image: null
+    });
+    const [productWarehouseRows, setProductWarehouseRows] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [uploadingImage, setUploadingImage] = useState(false);
+
+    // UOM Modal States
+    const [showUomModal, setShowUomModal] = useState(false);
+    const [uomFormData, setUomFormData] = useState({
+        category: '',
+        unitName: '',
+        weightPerUnit: '',
+        uomType: 'Simple',
+        baseUnitId: '',
+        conversionRate: ''
+    });
+
+    const measurementCategories = ['Weight', 'Area', 'Volume', 'Length', 'Count'];
+
+    const unitsByCategory = {
+        'Weight': [
+            'Microgram', 'Milligram', 'Gram', 'Kilogram (KG)', 'Metric Ton (Tonne)',
+            'Quintal', 'Pound (lb)', 'Ounce (oz)', 'Stone', 'Carat'
+        ],
+        'Area': [
+            'Square Millimeter', 'Square Centimeter', 'Square Meter', 'Square Kilometer',
+            'Square Inch', 'Square Foot', 'Square Yard', 'Acre', 'Hectare', 'Bigha',
+            'Kanal', 'Cent'
+        ],
+        'Volume': [
+            'Millilitre (mL)', 'Litre (L)', 'Cubic Centimeter (cc)', 'Cubic Meter',
+            'Cubic Inch', 'Cubic Foot', 'Gallon', 'Barrel', 'Pint', 'Quart', 'Fluid Ounce'
+        ],
+        'Length': [
+            'Nanometer', 'Micrometer', 'Millimeter', 'Centimeter', 'Meter',
+            'Kilometer', 'Inch', 'Foot', 'Yard', 'Mile'
+        ],
+        'Count': [
+            'Piece', 'Unit', 'Dozen', 'Pair', 'Set', 'Box', 'Packet', 'Carton',
+            'Bundle', 'Roll', 'Strip', 'Bottle', 'Bag', 'Can', 'Jar', 'Tube'
+        ]
+    };
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -147,20 +252,384 @@ const Quotation = () => {
     const fetchDropdowns = async () => {
         try {
             const companyId = GetCompanyId();
-            const [custRes, prodRes, whRes, servRes, uomRes] = await Promise.all([
+            const [custRes, prodRes, whRes, servRes, uomRes, catRes] = await Promise.all([
                 customerService.getAll(companyId),
                 productService.getAll(companyId),
                 warehouseService.getAll(companyId),
                 servicesService.getAll(companyId),
-                uomService.getUOMs(companyId)
+                uomService.getUOMs(companyId),
+                categoryService.getCategories(companyId).catch(() => ({ success: false, data: [] }))
             ]);
             if (custRes.data.success) setCustomers(custRes.data.data);
             if (prodRes.data.success) setAllProducts(prodRes.data.data);
             if (whRes.data.success) setAllWarehouses(whRes.data.data);
             if (servRes.data.success) setAllServices(servRes.data.data);
             if (uomRes.data) setAllUoms(uomRes.data);
+            if (catRes && catRes.success) setCategories(catRes.data);
         } catch (error) {
             console.error('Error fetching dropdowns:', error);
+        }
+    };
+
+    // Full Customer Submit and handlers
+    const handleCustomerInputChange = (e) => {
+        const { name, value, type, checked } = e.target;
+
+        setCustomerFormData(prev => {
+            let processedValue = type === 'checkbox' ? checked : value;
+
+            if (type !== 'checkbox' && typeof processedValue === 'string') {
+                if (name === 'phone' || name === 'billingPhone' || name === 'shippingPhone') {
+                    processedValue = processedValue.replace(/\D/g, '');
+                } else if (name === 'accountBalance') {
+                    processedValue = processedValue.replace(/-/g, '');
+                    if (processedValue !== '') {
+                        const parsed = parseFloat(processedValue);
+                        if (!isNaN(parsed) && parsed < 0) {
+                            processedValue = '0';
+                        }
+                    }
+                }
+            }
+
+            const newData = {
+                ...prev,
+                [name]: processedValue
+            };
+
+            if (name === 'shippingSameAsBilling' && checked) {
+                newData.shippingName = prev.billingName;
+                newData.shippingPhone = prev.billingPhone;
+                newData.shippingAddress = prev.billingAddress;
+                newData.shippingCity = prev.billingCity;
+                newData.shippingState = prev.billingState;
+                newData.shippingCountry = prev.billingCountry;
+                newData.shippingZipCode = prev.billingZipCode;
+            }
+
+            return newData;
+        });
+    };
+
+    const handleCustomerShippingAddressChange = (index, field, value) => {
+        setCustomerFormData(prev => {
+            const newAddresses = [...prev.shippingAddresses];
+            let processedValue = value;
+            if (field === 'phone' && typeof value === 'string') {
+                processedValue = value.replace(/\D/g, '');
+            }
+            newAddresses[index] = { ...newAddresses[index], [field]: processedValue };
+            return { ...prev, shippingAddresses: newAddresses };
+        });
+    };
+
+    const addCustomerShippingAddress = () => {
+        setCustomerFormData(prev => ({
+            ...prev,
+            shippingAddresses: [
+                ...prev.shippingAddresses,
+                { name: '', phone: '', address: '', city: '', state: '', country: '', zipCode: '', isDefault: false }
+            ]
+        }));
+    };
+
+    const removeCustomerShippingAddress = (index) => {
+        setCustomerFormData(prev => ({
+            ...prev,
+            shippingAddresses: prev.shippingAddresses.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleCustomerFileUpload = async (file, field, folder) => {
+        if (!file) return;
+        const setUploading = field === 'profileImage' ? setUploadingProfileImage : setUploadingAnyFile;
+        setUploading(true);
+        try {
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', file);
+            const res = await axiosInstance.post(`/upload?folder=${folder}`, formDataUpload, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            if (res.data.success) {
+                setCustomerFormData(prev => ({ ...prev, [field]: res.data.url }));
+                toast.success(`${field === 'profileImage' ? 'Profile image' : 'File'} uploaded!`);
+            }
+        } catch (err) {
+            toast.error('Upload failed: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleFullCustomerSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!customerFormData.name || !customerFormData.email) {
+            toast.error('Please fill in required fields (Name and Email)');
+            return;
+        }
+
+        const payload = { ...customerFormData };
+        let shippingAddresses = [...customerFormData.shippingAddresses];
+
+        if (customerFormData.shippingSameAsBilling) {
+            const billingAsShipping = {
+                name: customerFormData.billingName || customerFormData.name,
+                phone: customerFormData.billingPhone || customerFormData.phone,
+                address: customerFormData.billingAddress,
+                city: customerFormData.billingCity,
+                state: customerFormData.billingState,
+                country: customerFormData.billingCountry,
+                zipCode: customerFormData.billingZipCode,
+                isDefault: true
+            };
+            shippingAddresses = [billingAsShipping, ...customerFormData.shippingAddresses];
+        }
+
+        payload.shippingAddresses = shippingAddresses;
+        payload.companyId = parseInt(GetCompanyId());
+
+        try {
+            const res = await customerServiceFromServices.createCustomer(payload);
+            toast.success('Customer created successfully!');
+            setShowAddCustomerModal(false);
+
+            // Refresh customer selection dropdown
+            const companyId = GetCompanyId();
+            const custRes = await customerService.getAll(companyId);
+            if (custRes?.data?.success) {
+                setCustomers(custRes.data.data);
+            } else if (custRes?.data) {
+                setCustomers(custRes.data);
+            }
+
+            const added = res?.data || res;
+            if (added && added.id) {
+                setCustomerId(added.id);
+                setCustomerDetails({
+                    address: added.billingAddress || '',
+                    email: added.email || '',
+                    phone: added.phone || ''
+                });
+            }
+
+            // Reset customer form
+            setCustomerFormData({
+                name: '',
+                nameArabic: '',
+                companyName: '',
+                companyLocation: '',
+                profileImage: '',
+                anyFile: '',
+                accountType: 'Credit',
+                balanceType: 'Debit',
+                accountBalance: 0,
+                creationDate: new Date().toISOString().split('T')[0],
+                bankAccountNumber: '',
+                bankIFSC: '',
+                bankNameBranch: '',
+                phone: '',
+                email: '',
+                creditPeriod: '',
+                gstNumber: '',
+                gstEnabled: false,
+                billingName: '',
+                billingPhone: '',
+                billingAddress: '',
+                billingCity: '',
+                billingState: '',
+                billingCountry: '',
+                billingZipCode: '',
+                shippingSameAsBilling: false,
+                shippingName: '',
+                shippingPhone: '',
+                shippingAddress: '',
+                shippingCity: '',
+                shippingState: '',
+                shippingCountry: '',
+                shippingZipCode: '',
+                shippingAddresses: []
+            });
+        } catch (error) {
+            console.error('Error saving customer:', error);
+            toast.error(error.message || 'Failed to save customer');
+        }
+    };
+
+    // Full Product Submit and handlers
+    const handleProductInputChange = (e) => {
+        const { name, value } = e.target;
+        setProductFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const addProductWarehouseRow = () => {
+        const firstWhId = allWarehouses.length > 0 ? allWarehouses[0].id : '';
+        setProductWarehouseRows([...productWarehouseRows, {
+            id: Date.now(),
+            warehouseId: firstWhId,
+            quantity: 0,
+            minOrderQty: 0,
+            initialQty: 0
+        }]);
+    };
+
+    const removeProductWarehouseRow = (id) => {
+        setProductWarehouseRows(productWarehouseRows.filter(row => row.id !== id));
+    };
+
+    const handleProductWhRowChange = (id, field, value) => {
+        setProductWarehouseRows(productWarehouseRows.map(row =>
+            row.id === id ? { ...row, [field]: value } : row
+        ));
+    };
+
+    const handleProductImageChange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (!file.type.startsWith('image/')) {
+                toast.error('Please select a valid image file');
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                toast.error('Image size should be less than 5MB');
+                return;
+            }
+
+            try {
+                setUploadingImage(true);
+                toast.loading('Uploading image...', { id: 'image-upload' });
+                const imageUrl = await uploadToCloudinary(file);
+                setProductFormData(prev => ({ ...prev, image: imageUrl }));
+                toast.success('Image uploaded successfully', { id: 'image-upload' });
+            } catch (error) {
+                console.error('Error uploading image:', error);
+                toast.error('Failed to upload image', { id: 'image-upload' });
+            } finally {
+                setUploadingImage(false);
+            }
+        }
+    };
+
+    const handleProductAddCategorySubmit = async () => {
+        if (!newCategoryName.trim()) return toast.error('Category name is required');
+        try {
+            const companyId = GetCompanyId();
+            const res = await categoryService.createCategory({ name: newCategoryName, companyId });
+            if (res.success) {
+                toast.success('Category added');
+                setShowCategoryModal(false);
+                setNewCategoryName('');
+                const catRes = await categoryService.getCategories(companyId);
+                if (catRes.success) setCategories(catRes.data);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to add category');
+        }
+    };
+
+    const getUniqueCategories = () => {
+        return [...new Set(allUoms.map(u => u.category))];
+    };
+
+    const getAvailableBaseUnitsForCategory = (category) => {
+        return allUoms.filter(u => u.category === category && u.uomType === 'Simple');
+    };
+
+    const handleUomInputChange = (e) => {
+        const { name, value } = e.target;
+        setUomFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleUomSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                category: uomFormData.category,
+                unitName: uomFormData.unitName,
+                weightPerUnit: uomFormData.weightPerUnit,
+                uomType: uomFormData.uomType,
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
+                    : null,
+                conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
+                companyId: parseInt(companyId)
+            };
+
+            const res = await uomService.createUOM(payload);
+            if (res.success) {
+                toast.success('Unit added successfully');
+                // Reload list of uoms
+                const uomsRes = await uomService.getUOMs(companyId);
+                if (uomsRes.success) {
+                    setAllUoms(uomsRes.data || []);
+                }
+                // Pre-select newly created UOM in the form
+                setProductFormData(prev => ({
+                    ...prev,
+                    uomId: res.data?.id || prev.uomId,
+                    purchaseUomId: res.data?.id || prev.purchaseUomId,
+                    salesUomId: res.data?.id || prev.salesUomId
+                }));
+                setShowUomModal(false);
+                // Reset form
+                setUomFormData({
+                    category: '',
+                    unitName: '',
+                    weightPerUnit: '',
+                    uomType: 'Simple',
+                    baseUnitId: '',
+                    conversionRate: ''
+                });
+            }
+        } catch (error) {
+            console.error('Error saving UOM:', error);
+            toast.error(error.response?.data?.message || 'Failed to save UOM');
+        }
+    };
+
+    const handleFullProductSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!productFormData.name) {
+            toast.error('Item Name is required');
+            return;
+        }
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                ...productFormData,
+                companyId: parseInt(companyId),
+                warehouseInfo: productWarehouseRows.map(row => ({
+                    warehouseId: parseInt(row.warehouseId),
+                    quantity: parseFloat(row.quantity) || 0,
+                    minOrderQty: parseFloat(row.minOrderQty) || 0,
+                    initialQty: parseFloat(row.initialQty) || 0
+                }))
+            };
+            await productServiceFromServices.createProduct(payload);
+            toast.success('Product created successfully!');
+            setShowAddProductModal(false);
+
+            // Refresh products
+            const prodRes = await productService.getAll(companyId);
+            if (prodRes?.data?.success) {
+                setAllProducts(prodRes.data.data);
+            } else if (prodRes?.data) {
+                setAllProducts(prodRes.data);
+            } else if (Array.isArray(prodRes)) {
+                setAllProducts(prodRes);
+            }
+
+            // Reset product form
+            setProductFormData({
+                name: '', sku: '', hsn: '', barcode: '', categoryId: '',
+                uomId: '', purchaseUomId: '', salesUomId: '', unit: '', description: '', asOfDate: new Date().toISOString().split('T')[0],
+                taxAccount: '', initialCost: 0, salePrice: 0, purchasePrice: 0,
+                discount: 0, remarks: '', image: null
+            });
+            setProductWarehouseRows([]);
+        } catch (error) {
+            console.error('Error saving product:', error);
+            toast.error(error.message || 'Failed to save product');
         }
     };
 
@@ -170,7 +639,7 @@ const Quotation = () => {
         setCustomerId('');
         setCustomerDetails({ address: '', email: '', phone: '' });
         setQuotationMeta({ manualNo: '', date: new Date().toISOString().split('T')[0], validTill: '' });
-        
+
         let defWarehouseId = '';
         if (companySettings?.inventoryConfig) {
             try {
@@ -446,9 +915,45 @@ const Quotation = () => {
             if (item.id === id) {
                 let updatedItem;
                 if (typeof field === 'object') {
-                    updatedItem = { ...item, ...field };
+                    let sanitizedField = { ...field };
+                    ['qty', 'rate', 'tax', 'discount'].forEach(k => {
+                        if (sanitizedField[k] !== undefined) {
+                            let val = sanitizedField[k];
+                            if (typeof val === 'string') {
+                                val = val.replace(/-/g, '');
+                                if (val !== '') {
+                                    const parsed = parseFloat(val);
+                                    if (!isNaN(parsed) && parsed < 0) {
+                                        val = '0';
+                                    }
+                                }
+                            } else if (typeof val === 'number') {
+                                if (val < 0) {
+                                    val = 0;
+                                }
+                            }
+                            sanitizedField[k] = val;
+                        }
+                    });
+                    updatedItem = { ...item, ...sanitizedField };
                 } else {
-                    updatedItem = { ...item, [field]: value };
+                    let processedValue = value;
+                    if (['qty', 'rate', 'tax', 'discount'].includes(field)) {
+                        if (typeof value === 'string') {
+                            processedValue = value.replace(/-/g, '');
+                            if (processedValue !== '') {
+                                const parsed = parseFloat(processedValue);
+                                if (!isNaN(parsed) && parsed < 0) {
+                                    processedValue = '0';
+                                }
+                            }
+                        } else if (typeof value === 'number') {
+                            if (value < 0) {
+                                processedValue = 0;
+                            }
+                        }
+                    }
+                    updatedItem = { ...item, [field]: processedValue };
                 }
 
                 const qty = parseFloat(updatedItem.qty) || 0;
@@ -523,9 +1028,6 @@ const Quotation = () => {
         contentRef: printRef,
         documentTitle: `Quotation_${quotationMeta.manualNo || 'New'}`,
     });
-
-    // Handle Deep Link from Navigation State
-
 
     const salesProcess = [
         { id: 'quotation', label: 'Quotation', icon: FileText, status: 'active' },
@@ -646,8 +1148,8 @@ const Quotation = () => {
                                         <select
                                             value={q.manualStatus ? q.status : 'AUTO'}
                                             onChange={(e) => handleStatusChange(q.id, e.target.value)}
-                                             className="Quotation-quotation-status-pill"
-                                             style={getStatusStyle(q.manualStatus ? q.status : 'AUTO')}
+                                            className="Quotation-quotation-status-pill"
+                                            style={getStatusStyle(q.manualStatus ? q.status : 'AUTO')}
                                         >
                                             <option value="AUTO">Auto ({q.status || 'Pending'})</option>
                                             <option value="DRAFT">DRAFT</option>
@@ -726,7 +1228,7 @@ const Quotation = () => {
                                                         )}
                                                     </div>
                                                     <div className="invoice-header-right">
-                                                        <div className="invoice-title-large" style={{ color: companySettings?.invoiceColor || '#004aad', margin: '0' }}>{getDocumentTitle('quotation')}</div>
+                                                        <div className="invoice-title-large" style={{ color: companySettings?.invoiceColor || '#004aad', margin: '0' }}>{getDocumentTitle('salesquotation') || 'SALES QUOTATION'}</div>
                                                     </div>
                                                 </div>
 
@@ -743,7 +1245,7 @@ const Quotation = () => {
                                                     <div className="invoice-header-right">
                                                         <div className="invoice-meta-info">
                                                             <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
-                                                                <span className="invoice-label">{getInvoiceLabel('number')}</span>
+                                                                <span className="invoice-label">{getInvoiceLabel('number') || 'Quotation No:'}</span>
                                                                 <span>#{editingId ? quotations.find(q => q.id === editingId)?.quotationNumber : ""}</span>
                                                             </div>
                                                             <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
@@ -751,7 +1253,7 @@ const Quotation = () => {
                                                                 <span>{quotationMeta.manualNo || 'N/A'}</span>
                                                             </div>
                                                             <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
-                                                                <span className="invoice-label">{getInvoiceLabel('issue')}</span>
+                                                                <span className="invoice-label">{getInvoiceLabel('issue') || 'Quotation Date:'}</span>
                                                                 <span>{quotationMeta.date}</span>
                                                             </div>
                                                             <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
@@ -766,7 +1268,7 @@ const Quotation = () => {
 
                                         <div className="invoice-addresses" style={{ display: 'flex', justifyContent: 'space-between', width: '100% !important', marginTop: '2.5rem', gap: '3rem' }}>
                                             <div className="invoice-bill-to" style={{ flex: 1, textAlign: 'left', minWidth: '0' }}>
-                                                <div className="invoice-section-header">{getInvoiceLabel('billTo')}</div>
+                                                <div className="invoice-section-header">{getInvoiceLabel('billTo') || 'BILL TO'}</div>
                                                 <div className="font-bold" style={{ fontSize: '1.2rem', color: '#1e293b' }}>
                                                     {customers.find(c => c.id === parseInt(customerId))?.name || 'N/A'}
                                                 </div>
@@ -825,9 +1327,9 @@ const Quotation = () => {
                                                     <tr key={item.id}>
                                                         <td style={{ width: '35%' }}>
                                                             <span className="font-bold text-sm text-gray-800 block">
-                                                                {item.productId ? allProducts.find(p => p.id === parseInt(item.productId))?.name : 
-                                                                 item.serviceId ? allServices.find(s => s.id === parseInt(item.serviceId))?.name : 
-                                                                 'N/A'}
+                                                                {item.productId ? allProducts.find(p => p.id === parseInt(item.productId))?.name :
+                                                                    item.serviceId ? allServices.find(s => s.id === parseInt(item.serviceId))?.name :
+                                                                        'N/A'}
                                                             </span>
                                                             {item.description && <span className="text-xs text-gray-500 block mt-0.5">{item.description}</span>}
                                                         </td>
@@ -846,7 +1348,7 @@ const Quotation = () => {
                                         <div className="invoice-total-section">
                                             <div className="invoice-totals">
                                                 <div className="invoice-total-row">
-                                                    <span>{getInvoiceLabel('subTotal')}</span>
+                                                    <span>{getInvoiceLabel('subTotal') || 'Sub Total'}</span>
                                                     <span>{formatCurrency(totals.subTotal)}</span>
                                                 </div>
                                                 <div className="invoice-total-row text-red-600">
@@ -855,12 +1357,12 @@ const Quotation = () => {
                                                 </div>
                                                 {getInvoiceLabel('showTax') !== false && (
                                                     <div className="invoice-total-row">
-                                                        <span>{getInvoiceLabel('tax')}</span>
+                                                        <span>{getInvoiceLabel('tax') || 'Tax Total'}</span>
                                                         <span>{formatCurrency(totals.tax)}</span>
                                                     </div>
                                                 )}
                                                 <div className="invoice-final-total">
-                                                    <span>{getInvoiceLabel('total')}</span>
+                                                    <span>{getInvoiceLabel('total') || 'Grand Total'}</span>
                                                     <span>{formatCurrency(totals.total)}</span>
                                                 </div>
                                             </div>
@@ -919,7 +1421,31 @@ const Quotation = () => {
 
                                     <div className="Quotation-customer-section-compact">
                                         <div className="Quotation-customer-field">
-                                            <label className="Quotation-form-label-sm">Quotation To</label>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <label className="Quotation-form-label-sm">Quotation To</label>
+                                                {!isViewMode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowAddCustomerModal(true)}
+                                                        className="Quotation-add-quick-btn"
+                                                        style={{
+                                                            backgroundColor: '#22c55e',
+                                                            color: '#ffffff',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '2px 8px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 'bold',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        <Plus size={12} /> Add Customer
+                                                    </button>
+                                                )}
+                                            </div>
                                             <select className="Quotation-form-select-compact"
                                                 disabled={isViewMode}
                                                 value={customerId} onChange={(e) => {
@@ -1000,14 +1526,29 @@ const Quotation = () => {
 
                                     <div className="Quotation-items-section-new">
                                         {!isViewMode && (
-                                            <button className="Quotation-btn-add-row" onClick={addItem}>
-                                                <Plus size={14} /> Add Line Item
-                                            </button>
+                                            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                                                <button type="button" className="Quotation-btn-add-row" onClick={addItem} style={{ marginBottom: 0 }}>
+                                                    <Plus size={14} /> Add Line Item
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="Quotation-btn-add-row"
+                                                    onClick={() => setShowAddProductModal(true)}
+                                                    style={{
+                                                        backgroundColor: '#22c55e',
+                                                        borderColor: '#22c55e',
+                                                        color: '#ffffff',
+                                                        marginBottom: 0
+                                                    }}
+                                                >
+                                                    <Plus size={14} /> Add Product
+                                                </button>
+                                            </div>
                                         )}
                                         <div className="Quotation-table-responsive">
                                             <table className="Quotation-new-items-table">
                                                 <thead>
-                                                     <tr>
+                                                    <tr>
                                                         <th style={{ width: '20%' }}>{getTableHeader('item', 'Item Detail').toUpperCase()}</th>
                                                         {getInvoiceLabel('showWarehouse') !== false && <th style={{ width: '12%' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
                                                         {getInvoiceLabel('showQty') !== false && <th style={{ width: '8%' }}>{getTableHeader('quantity', 'Qty').toUpperCase()}</th>}
@@ -1028,7 +1569,7 @@ const Quotation = () => {
                                                                     value={item.productId ? `p-${item.productId}` : item.serviceId ? `s-${item.serviceId}` : ''}
                                                                     onChange={(e) => {
                                                                         const val = e.target.value;
-                                                                         if (val.startsWith('p-')) {
+                                                                        if (val.startsWith('p-')) {
                                                                             const pId = val.split('-')[1];
                                                                             const p = allProducts.find(x => x.id === parseInt(pId));
                                                                             if (p) {
@@ -1085,6 +1626,12 @@ const Quotation = () => {
                                                                 <td>
                                                                     <input type="number" className="Quotation-qty-input" value={item.qty}
                                                                         disabled={isViewMode}
+                                                                        min="0"
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                                                e.preventDefault();
+                                                                            }
+                                                                        }}
                                                                         onChange={(e) => updateItem(item.id, 'qty', e.target.value)} />
                                                                 </td>
                                                             )}
@@ -1119,6 +1666,12 @@ const Quotation = () => {
                                                                 <td>
                                                                     <input type="number" className="Quotation-rate-input" value={item.rate}
                                                                         disabled={isViewMode}
+                                                                        min="0"
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                                                e.preventDefault();
+                                                                            }
+                                                                        }}
                                                                         onChange={(e) => updateItem(item.id, 'rate', e.target.value)} />
                                                                 </td>
                                                             )}
@@ -1126,6 +1679,12 @@ const Quotation = () => {
                                                                 <td>
                                                                     <input type="number" className="Quotation-tax-input" value={item.tax}
                                                                         disabled={isViewMode}
+                                                                        min="0"
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                                                e.preventDefault();
+                                                                            }
+                                                                        }}
                                                                         onChange={(e) => updateItem(item.id, 'tax', e.target.value)} />
                                                                 </td>
                                                             )}
@@ -1133,6 +1692,12 @@ const Quotation = () => {
                                                                 <td>
                                                                     <input type="number" className="Quotation-discount-input" value={item.discount}
                                                                         disabled={isViewMode}
+                                                                        min="0"
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                                                e.preventDefault();
+                                                                            }
+                                                                        }}
                                                                         onChange={(e) => updateItem(item.id, 'discount', e.target.value)} />
                                                                 </td>
                                                             )}
@@ -1190,7 +1755,7 @@ const Quotation = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        
+
                                         <div className="Quotation-bottom-right-col">
                                             <div className="Quotation-totals-box-container">
                                                 <div className="Quotation-totals-box">
@@ -1220,7 +1785,24 @@ const Quotation = () => {
                                                                 min="0"
                                                                 disabled={isViewMode}
                                                                 value={overallDiscount}
-                                                                onChange={(e) => setOverallDiscount(e.target.value)}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                                        e.preventDefault();
+                                                                    }
+                                                                }}
+                                                                onChange={(e) => {
+                                                                    let val = e.target.value;
+                                                                    if (typeof val === 'string') {
+                                                                        val = val.replace(/-/g, '');
+                                                                        if (val !== '') {
+                                                                            const parsed = parseFloat(val);
+                                                                            if (!isNaN(parsed) && parsed < 0) {
+                                                                                val = '0';
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    setOverallDiscount(val);
+                                                                }}
                                                                 style={{ width: '80px', padding: '3px 6px', border: '1px solid #e2e8f0', borderRadius: '4px', fontSize: '13px', textAlign: 'right' }}
                                                             />
                                                             <span className="text-red-500" style={{ minWidth: '70px', textAlign: 'right', fontSize: '13px' }}>
@@ -1307,6 +1889,999 @@ const Quotation = () => {
                             <button className="Quotation-btn-cancel" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
                             <button className="Quotation-btn-delete-confirm" onClick={confirmDelete}>Delete</button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Full Add Customer Modal */}
+            {showAddCustomerModal && (
+                <div className="Customers-modal-overlay">
+                    <div className="Customers-modal-content Customers-modal-large" style={{ textAlign: 'left' }}>
+                        <div className="Customers-modal-header">
+                            <h2 className="Customers-modal-title">Add Customer</h2>
+                            <button className="Customers-close-btn" onClick={() => setShowAddCustomerModal(false)}>×</button>
+                        </div>
+
+                        <div className="Customers-modal-body">
+                            {/* Basic Information */}
+                            <div className="Customers-form-section" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+                                <h3 className="Customers-section-subtitle">Basic Information</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Name (English) <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="name"
+                                            value={customerFormData.name}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Name"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Name (Arabic)</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="nameArabic"
+                                            value={customerFormData.nameArabic}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Name (Arabic)"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Company Name</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="companyName"
+                                            value={customerFormData.companyName}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter company name"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-google-loc">
+                                        <label className="Customers-form-label">Company Google Location</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="companyLocation"
+                                            value={customerFormData.companyLocation}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Google Maps link"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* File Uploads */}
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-profile-img">
+                                        <label className="Customers-form-label">Profile Image</label>
+                                        {customerFormData.profileImage ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <img
+                                                    src={customerFormData.profileImage}
+                                                    alt="Profile"
+                                                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerFormData(prev => ({ ...prev, profileImage: '' }))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                >
+                                                    x Remove
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <input
+                                            type="file"
+                                            ref={profileImageRef}
+                                            accept="image/jpeg,image/png,image/jpg"
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleCustomerFileUpload(e.target.files[0], 'profileImage', 'customers')}
+                                        />
+                                        <div className="Customers-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                            <div className="Customers-file-label">
+                                                <span className="Customers-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
+                                                <span className="Customers-file-name">{customerFormData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
+                                            </div>
+                                        </div>
+                                        <span className="Customers-file-note">JPEG, PNG or JPG (max 5MB)</span>
+                                    </div>
+                                    <div className="Customers-form-group Customers-any-file">
+                                        <label className="Customers-form-label">Any File</label>
+                                        {customerFormData.anyFile ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                <a
+                                                    href={customerFormData.anyFile}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
+                                                >
+                                                    View File
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerFormData(prev => ({ ...prev, anyFile: '' }))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                >
+                                                    x Remove
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <input
+                                            type="file"
+                                            ref={anyFileRef}
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleCustomerFileUpload(e.target.files[0], 'anyFile', 'customers')}
+                                        />
+                                        <div className="Customers-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                            <div className="Customers-file-label">
+                                                <span className="Customers-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
+                                                <span className="Customers-file-name">{customerFormData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                            </div>
+                                        </div>
+                                        <span className="Customers-file-note">Any file type. Max 10MB</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Account Information */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Account Information</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Customer Type <span className="Customers-text-red">*</span></label>
+                                        <select
+                                            className="Customers-form-select"
+                                            name="accountType"
+                                            value={customerFormData.accountType || 'Credit'}
+                                            onChange={handleCustomerInputChange}
+                                        >
+                                            <option value="Credit">Credit Customer</option>
+                                            <option value="Cash">Cash Customer</option>
+                                        </select>
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Balance Type</label>
+                                        <select
+                                            className="Customers-form-select"
+                                            name="balanceType"
+                                            value={customerFormData.balanceType}
+                                            onChange={handleCustomerInputChange}
+                                        >
+                                            <option value="Debit">Debit</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <div className="Customers-input-with-note">
+                                            <label className="Customers-form-label">Account Name <span className="Customers-text-red">*</span></label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                value={customerFormData.name}
+                                                readOnly
+                                                disabled
+                                                style={{ backgroundColor: '#f3f4f6' }}
+                                            />
+                                            <span className="Customers-input-note">This will auto-fill from selection above</span>
+                                        </div>
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Account Balance <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="number"
+                                            className="Customers-form-input"
+                                            name="accountBalance"
+                                            value={customerFormData.accountBalance}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="0.00"
+                                            min="0"
+                                            onKeyDown={(e) => {
+                                                if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Creation Date <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="date"
+                                            className="Customers-form-input"
+                                            name="creationDate"
+                                            value={customerFormData.creationDate}
+                                            onChange={handleCustomerInputChange}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Bank Details */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Bank Details</h3>
+                                <div className="Customers-form-row Customers-three-col">
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank Account Number</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankAccountNumber"
+                                            value={customerFormData.bankAccountNumber}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank account number"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank IFSC</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankIFSC"
+                                            value={customerFormData.bankIFSC}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank IFSC"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank Name & Branch</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankNameBranch"
+                                            value={customerFormData.bankNameBranch}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank name & branch"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Contact & GST */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Contact & Status</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Phone <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="phone"
+                                            value={customerFormData.phone}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Phone"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Email <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="email"
+                                            className="Customers-form-input"
+                                            name="email"
+                                            value={customerFormData.email}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Email"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Credit Period (days)</label>
+                                        <input
+                                            type="number"
+                                            className="Customers-form-input"
+                                            name="creditPeriod"
+                                            value={customerFormData.creditPeriod}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter credit period"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row" style={{ alignItems: 'center' }}>
+                                    <label className="Customers-switch" style={{ marginRight: '10px' }}>
+                                        <input
+                                            type="checkbox"
+                                            name="gstEnabled"
+                                            checked={customerFormData.gstEnabled}
+                                            onChange={handleCustomerInputChange}
+                                        />
+                                        <span className="Customers-slider Customers-round"></span>
+                                    </label>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Enable GST</span>
+
+                                    {customerFormData.gstEnabled && (
+                                        <div className="Customers-form-group" style={{ marginLeft: '2rem', flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="gstNumber"
+                                                value={customerFormData.gstNumber}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter GSTIN"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Addresses */}
+                            <div className="Customers-form-section">
+                                <div className="Customers-form-row">
+                                    {/* Billing Address */}
+                                    <div style={{ flex: 1 }}>
+                                        <h3 className="Customers-section-subtitle">Billing Address</h3>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Name</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingName"
+                                                value={customerFormData.billingName}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Name"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Phone</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingPhone"
+                                                value={customerFormData.billingPhone}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Phone"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Address</label>
+                                            <textarea
+                                                className="Customers-form-textarea"
+                                                name="billingAddress"
+                                                value={customerFormData.billingAddress}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Address"
+                                                rows="3"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-row">
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingCity"
+                                                    value={customerFormData.billingCity}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="City"
+                                                />
+                                            </div>
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingState"
+                                                    value={customerFormData.billingState}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="State"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="Customers-form-row">
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingCountry"
+                                                    value={customerFormData.billingCountry}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="Country"
+                                                />
+                                            </div>
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingZipCode"
+                                                    value={customerFormData.billingZipCode}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="Zip Code"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Shipping Address */}
+                                    <div style={{ flex: 1, paddingLeft: '2rem', borderLeft: '1px solid #edf2f7' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <h3 className="Customers-section-subtitle">Shipping Addresses</h3>
+                                            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        name="shippingSameAsBilling"
+                                                        checked={customerFormData.shippingSameAsBilling}
+                                                        onChange={handleCustomerInputChange}
+                                                        style={{ marginRight: '5px' }}
+                                                    />
+                                                    Apply Billing to First Shipping
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    className="Customers-voucher-badge text-blue-600 border border-blue-600 bg-white hover:bg-blue-50"
+                                                    onClick={addCustomerShippingAddress}
+                                                    style={{ padding: '2px 8px', fontSize: '0.8rem', cursor: 'pointer' }}
+                                                >
+                                                    + Add More
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {customerFormData.shippingSameAsBilling && (
+                                            <div style={{ marginBottom: '1.5rem', padding: '15px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#0369a1' }}>First Shipping Address (Same as Billing)</h4>
+                                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#0c4a6e' }}>
+                                                    <strong>Address:</strong> {customerFormData.billingAddress || 'N/A'}<br />
+                                                    {customerFormData.billingCity && `${customerFormData.billingCity}, `}{customerFormData.billingState && `${customerFormData.billingState}, `}{customerFormData.billingZipCode}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {customerFormData.shippingAddresses.length === 0 && !customerFormData.shippingSameAsBilling && (
+                                            <div className="Customers-form-group" style={{ padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                                <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#64748b' }}>
+                                                    No shipping addresses added.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={addCustomerShippingAddress}
+                                                    className="Customers-voucher-badge text-blue-600"
+                                                >
+                                                    Click here to add one
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {customerFormData.shippingAddresses.map((addr, index) => (
+                                            <div key={index} style={{ marginBottom: '1.5rem', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', position: 'relative' }}>
+                                                {customerFormData.shippingAddresses.length > 1 && (
+                                                    <button
+                                                        onClick={() => removeCustomerShippingAddress(index)}
+                                                        style={{ position: 'absolute', top: '10px', right: '10px', color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                )}
+                                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#475569' }}>Shipping Address #{index + 1}</h4>
+
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Name</label>
+                                                    <input
+                                                        type="text"
+                                                        className="Customers-form-input"
+                                                        value={addr.name}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'name', e.target.value)}
+                                                        placeholder="Enter Name"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Phone</label>
+                                                    <input
+                                                        type="text"
+                                                        className="Customers-form-input"
+                                                        value={addr.phone}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'phone', e.target.value)}
+                                                        placeholder="Enter Phone"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Address</label>
+                                                    <textarea
+                                                        className="Customers-form-textarea"
+                                                        value={addr.address}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'address', e.target.value)}
+                                                        placeholder="Enter Address"
+                                                        rows="2"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-row">
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.city}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'city', e.target.value)}
+                                                            placeholder="City"
+                                                        />
+                                                    </div>
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.state}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'state', e.target.value)}
+                                                            placeholder="State"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="Customers-form-row">
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.country}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'country', e.target.value)}
+                                                            placeholder="Country"
+                                                        />
+                                                    </div>
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.zipCode}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'zipCode', e.target.value)}
+                                                            placeholder="Zip Code"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="Customers-modal-footer">
+                            <button type="button" className="Customers-btn-cancel" onClick={() => setShowAddCustomerModal(false)}>Cancel</button>
+                            <button type="button" className="Customers-btn-save" onClick={handleFullCustomerSubmit}>Create</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Full Add Product Modal */}
+            {showAddProductModal && (
+                <div className="Zirak-Inventory-modal-overlay">
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-Inventory-modal-header">
+                            <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
+                            <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleFullProductSubmit}>
+                            <div className="Zirak-Inventory-modal-body">
+                                <div className="Zirak-Inventory-form-grid">
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Name <span className="Zirak-Inventory-text-red">*</span></label>
+                                        <input
+                                            name="name" type="text" className="Zirak-Inventory-form-input"
+                                            placeholder="Enter item name" required
+                                            value={productFormData.name} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">HSN</label>
+                                        <input
+                                            name="hsn" type="text" className="Zirak-Inventory-form-input"
+                                            placeholder="Enter HSN code"
+                                            value={productFormData.hsn} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Barcode</label>
+                                        <input
+                                            name="barcode" type="text" className="Zirak-Inventory-form-input"
+                                            placeholder="Enter barcode"
+                                            value={productFormData.barcode} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Image</label>
+                                        <div className="Zirak-Inventory-file-input-wrapper">
+                                            <label className="Zirak-Inventory-file-label" style={{ opacity: uploadingImage ? 0.6 : 1, cursor: uploadingImage ? 'not-allowed' : 'pointer' }}>
+                                                {uploadingImage ? (
+                                                    <>
+                                                        <Loader2 size={16} className="Zirak-Inventory-animate-spin" style={{ display: 'inline-block', marginRight: '6px' }} />
+                                                        <span>Uploading...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Upload size={16} style={{ display: 'inline-block', marginRight: '6px' }} />
+                                                        <span>Choose File</span>
+                                                    </>
+                                                )}
+                                                <input
+                                                    type="file"
+                                                    className="Zirak-Inventory-hidden-file-input"
+                                                    onChange={handleProductImageChange}
+                                                    accept="image/*"
+                                                    disabled={uploadingImage}
+                                                />
+                                            </label>
+                                            <span className="Zirak-Inventory-file-name">
+                                                {productFormData.image ? (
+                                                    <a href={productFormData.image} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                                                        View Image
+                                                    </a>
+                                                ) : 'No file chosen'}
+                                            </span>
+                                        </div>
+                                        {productFormData.image && (
+                                            <div style={{ marginTop: '10px' }}>
+                                                <img
+                                                    src={productFormData.image}
+                                                    alt="Product preview"
+                                                    style={{
+                                                        maxWidth: '200px',
+                                                        maxHeight: '200px',
+                                                        objectFit: 'contain',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid #e5e7eb'
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Category (Optional)</label>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="categoryId" className="Zirak-Inventory-form-input"
+                                                value={productFormData.categoryId} onChange={handleProductInputChange}
+                                            >
+                                                <option value="">Select Category</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowCategoryModal(true)}><Plus size={16} /></button>
+                                        </div>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Base Unit (Tracking Unit)*</label>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="uomId" className="Zirak-Inventory-form-input"
+                                                value={productFormData.uomId} onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setProductFormData(prev => ({
+                                                        ...prev,
+                                                        uomId: val,
+                                                        purchaseUomId: val,
+                                                        salesUomId: val
+                                                    }));
+                                                }}
+                                                required
+                                            >
+                                                <option value="">Select Base UOM</option>
+                                                {allUoms.filter(u => u.uomType === 'Simple').map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.category})</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowUomModal(true)}>
+                                                <Plus size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Purchase Unit</label>
+                                        <select
+                                            name="purchaseUomId" className="Zirak-Inventory-form-input"
+                                            value={productFormData.purchaseUomId} onChange={handleProductInputChange}
+                                            disabled={!productFormData.uomId}
+                                        >
+                                            <option value="">Select Purchase UOM</option>
+                                            {productFormData.uomId && (() => {
+                                                const base = allUoms.find(u => u.id === parseInt(productFormData.uomId));
+                                                return allUoms
+                                                    .filter(u => (u.id === base?.id || u.baseUnitId === base?.id))
+                                                    .map(uom => (
+                                                        <option key={uom.id} value={uom.id}>
+                                                            {uom.unitName} {uom.uomType === 'Compound' ? `(1 ${uom.symbol || uom.unitName} = ${uom.conversionRate} ${base?.symbol || base?.unitName})` : ''}
+                                                        </option>
+                                                    ));
+                                            })()}
+                                        </select>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Sales Unit</label>
+                                        <select
+                                            name="salesUomId" className="Zirak-Inventory-form-input"
+                                            value={productFormData.salesUomId} onChange={handleProductInputChange}
+                                            disabled={!productFormData.uomId}
+                                        >
+                                            <option value="">Select Sales UOM</option>
+                                            {productFormData.uomId && (() => {
+                                                const base = allUoms.find(u => u.id === parseInt(productFormData.uomId));
+                                                return allUoms
+                                                    .filter(u => (u.id === base?.id || u.baseUnitId === base?.id))
+                                                    .map(uom => (
+                                                        <option key={uom.id} value={uom.id}>
+                                                            {uom.unitName} {uom.uomType === 'Compound' ? `(1 ${uom.symbol || uom.unitName} = ${uom.conversionRate} ${base?.symbol || base?.unitName})` : ''}
+                                                        </option>
+                                                    ));
+                                            })()}
+                                        </select>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">SKU <span className="Zirak-Inventory-text-red">*</span> </label>
+                                        <input
+                                            name="sku" type="text" className="Zirak-Inventory-form-input"
+                                            placeholder="Enter SKU" required
+                                            value={productFormData.sku} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Zirak-Inventory-section-title-row">
+                                    <h3 className="Zirak-Inventory-section-title">Warehouse Information</h3>
+                                    <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={addProductWarehouseRow}>+ Add Warehouse</button>
+                                </div>
+
+                                <div className="Zirak-Inventory-warehouse-table-container">
+                                    <table className="Zirak-Inventory-warehouse-input-table">
+                                        <thead>
+                                            <tr>
+                                                <th>WAREHOUSE</th>
+                                                <th>QUANTITY</th>
+                                                <th>MINIMUM ORDER QUANTITY</th>
+                                                <th>INITIAL QUANTITY ON HAND</th>
+                                                <th>ACTION</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input Zirak-Inventory-mini"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            <option value="">Select Warehouse</option>
+                                                            {allWarehouses.map(wh => (
+                                                                <option key={wh.id} value={wh.id}>{wh.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.quantity} onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.minOrderQty} onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)} /></td>
+                                                    <td><input type="number" className="Zirak-Inventory-form-input Zirak-Inventory-mini" value={row.initialQty} onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)} /></td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-remove" onClick={() => removeProductWarehouseRow(row.id)}>Remove</button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group Zirak-Inventory-full-width" style={{ marginTop: '1rem' }}>
+                                    <label className="Zirak-Inventory-form-label">Item Description</label>
+                                    <textarea
+                                        name="description" className="Zirak-Inventory-form-input Zirak-Inventory-textarea"
+                                        placeholder="Enter item description" rows={3}
+                                        value={productFormData.description} onChange={handleProductInputChange}
+                                    ></textarea>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-grid">
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">As Of Date</label>
+                                        <input
+                                            name="asOfDate" type="date" className="Zirak-Inventory-form-input"
+                                            value={productFormData.asOfDate} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Tax Account</label>
+                                        <input
+                                            name="taxAccount" type="text" className="Zirak-Inventory-form-input"
+                                            placeholder="Enter tax account"
+                                            value={productFormData.taxAccount} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Initial Cost/Unit</label>
+                                        <input
+                                            name="initialCost" type="number" className="Zirak-Inventory-form-input"
+                                            step="0.01" value={productFormData.initialCost} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Sale Price (Exclusive)</label>
+                                        <input
+                                            name="salePrice" type="number" className="Zirak-Inventory-form-input"
+                                            step="0.01" value={productFormData.salePrice} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Purchase Price (Inclusive)</label>
+                                        <input
+                                            name="purchasePrice" type="number" className="Zirak-Inventory-form-input"
+                                            step="0.01" value={productFormData.purchasePrice} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Discount %</label>
+                                        <input
+                                            name="discount" type="number" className="Zirak-Inventory-form-input"
+                                            value={productFormData.discount} onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group Zirak-Inventory-full-width">
+                                    <label className="Zirak-Inventory-form-label">Remarks</label>
+                                    <input
+                                        name="remarks" type="text" className="Zirak-Inventory-form-input"
+                                        placeholder="Enter remarks"
+                                        value={productFormData.remarks} onChange={handleProductInputChange}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="Zirak-Inventory-modal-footer">
+                                <button type="button" className="Zirak-Inventory-btn-cancel" onClick={() => setShowAddProductModal(false)}>Cancel</button>
+                                <button type="submit" className="Zirak-Inventory-btn-submit">Add</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New Category Modal */}
+            {showCategoryModal && (
+                <div className="Zirak-Inventory-modal-overlay Zirak-Inventory-sub-modal" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-category-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-Inventory-modal-header">
+                            <h2 className="Zirak-Inventory-modal-title">Add New Category</h2>
+                            <button className="Zirak-Inventory-close-btn" onClick={() => setShowCategoryModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="Zirak-Inventory-modal-body">
+                            <div className="Zirak-Inventory-form-group">
+                                <label className="Zirak-Inventory-form-label">Category Name</label>
+                                <input
+                                    type="text"
+                                    className="Zirak-Inventory-form-input"
+                                    placeholder="Enter new category name"
+                                    value={newCategoryName}
+                                    onChange={(e) => setNewCategoryName(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="Zirak-Inventory-modal-footer">
+                            <button className="Zirak-Inventory-btn-cancel" onClick={() => setShowCategoryModal(false)}>Cancel</button>
+                            <button className="Zirak-Inventory-btn-submit" onClick={handleProductAddCategorySubmit}>Add</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Add New UOM Modal */}
+            {showUomModal && (
+                <div className="Zirak-UOM-modal-overlay" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-UOM-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-UOM-modal-header">
+                            <h2>Unit Details</h2>
+                            <button className="Zirak-UOM-close-btn" onClick={() => setShowUomModal(false)}><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleUomSubmit}>
+                            <div className="Zirak-UOM-modal-body">
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Measurement Category*</label>
+                                    <input
+                                        list="category-suggestions"
+                                        name="category"
+                                        placeholder="Select or type category"
+                                        value={uomFormData.category}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-input"
+                                    />
+                                    <datalist id="category-suggestions">
+                                        {measurementCategories.map(cat => (
+                                            <option key={cat} value={cat} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>UOM Type*</label>
+                                    <select
+                                        name="uomType"
+                                        value={uomFormData.uomType}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-select"
+                                    >
+                                        <option value="Simple">Simple (Single Standalone Unit)</option>
+                                        <option value="Compound">Compound (Pack of Simple Unit)</option>
+                                    </select>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Unit of Measurement (UOM)*</label>
+                                    <div className="Zirak-UOM-input-with-button">
+                                        <input
+                                            list="unit-suggestions"
+                                            name="unitName"
+                                            placeholder="Select or type UOM"
+                                            value={uomFormData.unitName}
+                                            onChange={handleUomInputChange}
+                                            required
+                                            className="Zirak-UOM-form-input"
+                                        />
+                                        <datalist id="unit-suggestions">
+                                            {uomFormData.category && unitsByCategory[uomFormData.category] && unitsByCategory[uomFormData.category].map(unit => (
+                                                <option key={unit} value={unit} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                {uomFormData.uomType === 'Compound' && (
+                                    <>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Base Unit* (Simple Unit to convert to)</label>
+                                            <select
+                                                name="baseUnitId"
+                                                value={uomFormData.baseUnitId}
+                                                onChange={handleUomInputChange}
+                                                required
+                                                className="Zirak-UOM-form-select"
+                                            >
+                                                <option value="">-- Select Base Unit --</option>
+                                                {getUniqueCategories().map(cat => {
+                                                    const unitsInCat = getAvailableBaseUnitsForCategory(cat);
+                                                    if (unitsInCat.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={cat} label={cat}>
+                                                            {unitsInCat.map(u => (
+                                                                <option key={u.id} value={u.id}>
+                                                                    {u.unitName} {u.isStandard ? ' - Standard' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })}
+                                            </select>
+                                        </div>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Conversion Rate* (Multiplier)</label>
+                                            <div className="UOM-compound-formula-preview">
+                                                <span>1 {uomFormData.unitName || 'Compound Unit'} = </span>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    name="conversionRate"
+                                                    placeholder="Multiplier e.g. 24"
+                                                    value={uomFormData.conversionRate}
+                                                    onChange={handleUomInputChange}
+                                                    required
+                                                    min="0.0001"
+                                                    style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
+                                                />
+                                                <span> {
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
+                                                        : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
+                                                }</span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="Zirak-UOM-modal-footer">
+                                <button type="button" className="Zirak-UOM-footer-close-btn" onClick={() => setShowUomModal(false)}>Close</button>
+                                <button type="submit" className="Zirak-UOM-save-btn">Save</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

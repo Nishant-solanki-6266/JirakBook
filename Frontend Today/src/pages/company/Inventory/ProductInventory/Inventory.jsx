@@ -10,6 +10,7 @@ import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
 import { useNavigate } from 'react-router-dom';
 import GetCompanyId from '../../../../api/GetCompanyId';
 import { CompanyContext } from '../../../../context/CompanyContext';
+import '../UOM/UOM.css';
 
 import { AuthContext } from '../../../../context/AuthContext';
 
@@ -32,6 +33,43 @@ const Inventory = () => {
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [showCategoryModal, setShowCategoryModal] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
+
+    // UOM Modal States
+    const [showUomModal, setShowUomModal] = useState(false);
+    const [uomFormData, setUomFormData] = useState({
+        category: '',
+        unitName: '',
+        weightPerUnit: '',
+        uomType: 'Simple',
+        baseUnitId: '',
+        conversionRate: ''
+    });
+
+    const measurementCategories = ['Weight', 'Area', 'Volume', 'Length', 'Count'];
+
+    const unitsByCategory = {
+        'Weight': [
+            'Microgram', 'Milligram', 'Gram', 'Kilogram (KG)', 'Metric Ton (Tonne)',
+            'Quintal', 'Pound (lb)', 'Ounce (oz)', 'Stone', 'Carat'
+        ],
+        'Area': [
+            'Square Millimeter', 'Square Centimeter', 'Square Meter', 'Square Kilometer',
+            'Square Inch', 'Square Foot', 'Square Yard', 'Acre', 'Hectare', 'Bigha',
+            'Kanal', 'Cent'
+        ],
+        'Volume': [
+            'Millilitre (mL)', 'Litre (L)', 'Cubic Centimeter (cc)', 'Cubic Meter',
+            'Cubic Inch', 'Cubic Foot', 'Gallon', 'Barrel', 'Pint', 'Quart', 'Fluid Ounce'
+        ],
+        'Length': [
+            'Nanometer', 'Micrometer', 'Millimeter', 'Centimeter', 'Meter',
+            'Kilometer', 'Inch', 'Foot', 'Yard', 'Mile'
+        ],
+        'Count': [
+            'Piece', 'Unit', 'Dozen', 'Pair', 'Set', 'Box', 'Packet', 'Carton',
+            'Bundle', 'Roll', 'Strip', 'Bottle', 'Bag', 'Can', 'Jar', 'Tube'
+        ]
+    };
 
     const [formData, setFormData] = useState({
         name: '',
@@ -264,6 +302,67 @@ const Inventory = () => {
         }
     };
 
+    const getUniqueCategories = () => {
+        return [...new Set(uoms.map(u => u.category))];
+    };
+
+    const getAvailableBaseUnitsForCategory = (category) => {
+        return uoms.filter(u => u.category === category && u.uomType === 'Simple');
+    };
+
+    const handleUomInputChange = (e) => {
+        const { name, value } = e.target;
+        setUomFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleUomSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                category: uomFormData.category,
+                unitName: uomFormData.unitName,
+                weightPerUnit: uomFormData.weightPerUnit,
+                uomType: uomFormData.uomType,
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
+                    : null,
+                conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
+                companyId: parseInt(companyId)
+            };
+
+            const res = await uomService.createUOM(payload);
+            if (res.success) {
+                toast.success('Unit added successfully');
+                // Reload list of uoms
+                const uomsRes = await uomService.getUOMs(companyId);
+                if (uomsRes.success) {
+                    setUoms(uomsRes.data || []);
+                }
+                // Pre-select newly created UOM in the form
+                setFormData(prev => ({
+                    ...prev,
+                    uomId: res.data?.id || prev.uomId,
+                    purchaseUomId: res.data?.id || prev.purchaseUomId,
+                    salesUomId: res.data?.id || prev.salesUomId
+                }));
+                setShowUomModal(false);
+                // Reset form
+                setUomFormData({
+                    category: '',
+                    unitName: '',
+                    weightPerUnit: '',
+                    uomType: 'Simple',
+                    baseUnitId: '',
+                    conversionRate: ''
+                });
+            }
+        } catch (error) {
+            console.error('Error saving UOM:', error);
+            toast.error(error.response?.data?.message || 'Failed to save UOM');
+        }
+    };
+
     const filteredProducts = products.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.sku?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -481,24 +580,29 @@ const Inventory = () => {
                                     </div>
                                     <div className="Zirak-Inventory-form-group">
                                         <label className="Zirak-Inventory-form-label">Base Unit (Tracking Unit)*</label>
-                                        <select
-                                            name="uomId" className="Zirak-Inventory-form-input"
-                                            value={formData.uomId} onChange={(e) => {
-                                                const val = e.target.value;
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    uomId: val,
-                                                    purchaseUomId: val,
-                                                    salesUomId: val
-                                                }));
-                                            }}
-                                            required
-                                        >
-                                            <option value="">Select Base UOM</option>
-                                            {uoms.filter(u => u.uomType === 'Simple').map(uom => (
-                                                <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.category})</option>
-                                            ))}
-                                        </select>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="uomId" className="Zirak-Inventory-form-input"
+                                                value={formData.uomId} onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        uomId: val,
+                                                        purchaseUomId: val,
+                                                        salesUomId: val
+                                                    }));
+                                                }}
+                                                required
+                                            >
+                                                <option value="">Select Base UOM</option>
+                                                {uoms.filter(u => u.uomType === 'Simple').map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.category})</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowUomModal(true)}>
+                                                <Plus size={16} />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="Zirak-Inventory-form-group">
                                         <label className="Zirak-Inventory-form-label">Default Purchase Unit</label>
@@ -726,6 +830,125 @@ const Inventory = () => {
                     </div>
                 )
             }
+            {/* Add New UOM Modal */}
+            {showUomModal && (
+                <div className="Zirak-UOM-modal-overlay" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-UOM-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-UOM-modal-header">
+                            <h2>Unit Details</h2>
+                            <button className="Zirak-UOM-close-btn" onClick={() => setShowUomModal(false)}><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleUomSubmit}>
+                            <div className="Zirak-UOM-modal-body">
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Measurement Category*</label>
+                                    <input
+                                        list="category-suggestions"
+                                        name="category"
+                                        placeholder="Select or type category"
+                                        value={uomFormData.category}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-input"
+                                    />
+                                    <datalist id="category-suggestions">
+                                        {measurementCategories.map(cat => (
+                                            <option key={cat} value={cat} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>UOM Type*</label>
+                                    <select
+                                        name="uomType"
+                                        value={uomFormData.uomType}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-select"
+                                    >
+                                        <option value="Simple">Simple (Single Standalone Unit)</option>
+                                        <option value="Compound">Compound (Pack of Simple Unit)</option>
+                                    </select>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Unit of Measurement (UOM)*</label>
+                                    <div className="Zirak-UOM-input-with-button">
+                                        <input
+                                            list="unit-suggestions"
+                                            name="unitName"
+                                            placeholder="Select or type UOM"
+                                            value={uomFormData.unitName}
+                                            onChange={handleUomInputChange}
+                                            required
+                                            className="Zirak-UOM-form-input"
+                                        />
+                                        <datalist id="unit-suggestions">
+                                            {uomFormData.category && unitsByCategory[uomFormData.category] && unitsByCategory[uomFormData.category].map(unit => (
+                                                <option key={unit} value={unit} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                {uomFormData.uomType === 'Compound' && (
+                                    <>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Base Unit* (Simple Unit to convert to)</label>
+                                            <select
+                                                name="baseUnitId"
+                                                value={uomFormData.baseUnitId}
+                                                onChange={handleUomInputChange}
+                                                required
+                                                className="Zirak-UOM-form-select"
+                                            >
+                                                <option value="">-- Select Base Unit --</option>
+                                                {getUniqueCategories().map(cat => {
+                                                    const unitsInCat = getAvailableBaseUnitsForCategory(cat);
+                                                    if (unitsInCat.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={cat} label={cat}>
+                                                            {unitsInCat.map(u => (
+                                                                <option key={u.id} value={u.id}>
+                                                                    {u.unitName} {u.isStandard ? ' - Standard' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })}
+                                            </select>
+                                        </div>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Conversion Rate* (Multiplier)</label>
+                                            <div className="UOM-compound-formula-preview">
+                                                <span>1 {uomFormData.unitName || 'Compound Unit'} = </span>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    name="conversionRate"
+                                                    placeholder="Multiplier e.g. 24"
+                                                    value={uomFormData.conversionRate}
+                                                    onChange={handleUomInputChange}
+                                                    required
+                                                    min="0.0001"
+                                                    style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
+                                                />
+                                                <span> {
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
+                                                        : (uoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
+                                                }</span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="Zirak-UOM-modal-footer">
+                                <button type="button" className="Zirak-UOM-footer-close-btn" onClick={() => setShowUomModal(false)}>Close</button>
+                                <button type="submit" className="Zirak-UOM-save-btn">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div >
     );
 };

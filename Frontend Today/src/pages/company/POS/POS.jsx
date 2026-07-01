@@ -985,24 +985,6 @@ const POS = () => {
                                              </select>
                                          </div>
 
-                                         {/* Warehouse Selector */}
-                                         <div className="companypos-wh-select-container flex-1" style={{ minWidth: '70px' }}>
-                                              <select
-                                                  className="companypos-uom-select"
-                                                  style={{ height: '28px', padding: '0.2rem 0.4rem', fontSize: '0.8rem', width: '100%' }}
-                                                  value={item.warehouseId || ''}
-                                                  onChange={(e) => {
-                                                      const newWhId = e.target.value;
-                                                      setCart(cart.map(c => c.cartItemId === item.cartItemId ? { ...c, warehouseId: newWhId } : c));
-                                                  }}
-                                              >
-                                                  <option value="">WH...</option>
-                                                  {allWarehouses.map(w => (
-                                                      <option key={w.id} value={w.id}>{w.name}</option>
-                                                  ))}
-                                              </select>
-                                         </div>
-
                                          {/* Delete Button */}
                                          <button 
                                              className="companypos-cart-item-delete" 
@@ -1023,17 +1005,19 @@ const POS = () => {
                             <div className="companypos-tax-select-container">
                                 <label className="text-xs font-semibold text-gray-500 mb-1 block">Tax</label>
                                 <div className="companypos-tax-wrapper">
-                                    <select
+                                    <input
+                                        type="number"
                                         className="companypos-tax-dropdown"
+                                        style={{ backgroundImage: 'none', paddingRight: '0.75rem' }}
                                         value={selectedTax}
-                                        onChange={(e) => setSelectedTax(parseFloat(e.target.value))}
-                                    >
-                                        <option value={0}>No Tax</option>
-                                        <option value={5}>GST 5%</option>
-                                        <option value={10}>GST 10%</option>
-                                        <option value={12}>GST 12%</option>
-                                        <option value={18}>GST 18%</option>
-                                    </select>
+                                        onChange={(e) => setSelectedTax(parseFloat(e.target.value) || 0)}
+                                        min="0"
+                                        onKeyDown={(e) => {
+                                            if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                e.preventDefault();
+                                            }
+                                        }}
+                                    />
                                 </div>
                             </div>
                             <div>
@@ -1607,7 +1591,7 @@ const POS = () => {
                                         className="companypos-control-input"
                                         placeholder="Enter Phone Number"
                                         value={quickCustomerPhone}
-                                        onChange={(e) => setQuickCustomerPhone(e.target.value)}
+                                        onChange={(e) => setQuickCustomerPhone(e.target.value.replace(/\D/g, ''))}
                                         style={{ width: '100%' }}
                                     />
                                 </div>

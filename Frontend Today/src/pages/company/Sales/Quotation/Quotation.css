@@ -1538,3 +1538,23 @@ table input {
     font-weight: 900;
     color: #000;
 }
+
+/* Hide browser native number spinner controls (dropdown num wala) */
+.Quotation-qty-input::-webkit-outer-spin-button,
+.Quotation-qty-input::-webkit-inner-spin-button,
+.Quotation-rate-input::-webkit-outer-spin-button,
+.Quotation-rate-input::-webkit-inner-spin-button,
+.Quotation-tax-input::-webkit-outer-spin-button,
+.Quotation-tax-input::-webkit-inner-spin-button,
+.Quotation-discount-input::-webkit-outer-spin-button,
+.Quotation-discount-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.Quotation-qty-input[type="number"],
+.Quotation-rate-input[type="number"],
+.Quotation-tax-input[type="number"],
+.Quotation-discount-input[type="number"] {
+    -moz-appearance: textfield;
+}

@@ -1492,7 +1492,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\Users\\nisha\\OneDrive\\Pictures\\KiyaanProject\\zirakbook\\Backend Today\\prisma\\generated\\client",
+      "value": "/Users/Software/Kiaan/Zirak/Backend Today/prisma/generated/client",
       "fromEnvVar": null
     },
     "config": {
@@ -1501,7 +1501,7 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "windows",
+        "value": "darwin",
         "native": true
       },
       {
@@ -1510,7 +1510,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\Users\\nisha\\OneDrive\\Pictures\\KiyaanProject\\zirakbook\\Backend Today\\prisma\\schema.prisma",
+    "sourceFilePath": "/Users/Software/Kiaan/Zirak/Backend Today/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

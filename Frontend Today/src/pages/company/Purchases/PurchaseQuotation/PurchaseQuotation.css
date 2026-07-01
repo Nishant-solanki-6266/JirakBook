@@ -2072,4 +2072,24 @@
         opacity: 1;
         transform: translateY(0) scale(1);
     }
+}
+
+/* Hide browser native number spinner controls (dropdown num wala) */
+.PurchaseQuotation-qty-input::-webkit-outer-spin-button,
+.PurchaseQuotation-qty-input::-webkit-inner-spin-button,
+.PurchaseQuotation-rate-input::-webkit-outer-spin-button,
+.PurchaseQuotation-rate-input::-webkit-inner-spin-button,
+.PurchaseQuotation-tax-input::-webkit-outer-spin-button,
+.PurchaseQuotation-tax-input::-webkit-inner-spin-button,
+.PurchaseQuotation-discount-input::-webkit-outer-spin-button,
+.PurchaseQuotation-discount-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.PurchaseQuotation-qty-input[type="number"],
+.PurchaseQuotation-rate-input[type="number"],
+.PurchaseQuotation-tax-input[type="number"],
+.PurchaseQuotation-discount-input[type="number"] {
+    -moz-appearance: textfield;
 }

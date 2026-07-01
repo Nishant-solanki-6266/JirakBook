@@ -36,7 +36,7 @@ const createReturn = async (req, res) => {
             const taxableAmount = Math.max(0, (qty * rate) - discount);
             const taxAmount = (taxableAmount * taxRate) / 100;
             const amount = taxableAmount + taxAmount;
-            
+
             totalAmount += amount;
             returnedSubtotal += (qty * rate);
             returnedDiscount += discount;
@@ -504,7 +504,7 @@ const updateReturn = async (req, res) => {
             const taxableAmount = Math.max(0, (qty * rate) - discount);
             const taxAmount = (taxableAmount * taxRate) / 100;
             const amount = taxableAmount + taxAmount;
-            
+
             totalAmount += amount;
             returnedSubtotal += (qty * rate);
             returnedDiscount += discount;
@@ -655,7 +655,7 @@ const updateReturn = async (req, res) => {
                 const taxRate = item.taxRate || 0;
                 const taxable = Math.max(0, (qty * rate) - discount);
                 const taxAmt = (taxable * taxRate) / 100;
-                
+
                 oldSubtotal += (qty * rate);
                 oldDiscount += discount;
                 oldTax += taxAmt;
@@ -1080,7 +1080,7 @@ const deleteReturn = async (req, res) => {
                 const taxRate = item.taxRate || 0;
                 const taxable = Math.max(0, (qty * rate) - discount);
                 const taxAmt = (taxable * taxRate) / 100;
-                
+
                 oldSubtotal += (qty * rate);
                 oldDiscount += discount;
                 oldTax += taxAmt;
@@ -1237,7 +1237,7 @@ const deleteSalesReturnHelper = async (tx, salesReturn, companyId) => {
         const taxRate = item.taxRate || 0;
         const taxable = Math.max(0, (qty * rate) - discount);
         const taxAmt = (taxable * taxRate) / 100;
-        
+
         oldSubtotal += (qty * rate);
         oldDiscount += discount;
         oldTax += taxAmt;

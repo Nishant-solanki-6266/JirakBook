@@ -388,7 +388,7 @@ const createPOSInvoice = async (req, res) => {
         });
 
         await numberingService.incrementNumber(currentCompanyId, 'posinvoice', resolvedInvoiceNumber);
-        
+
         const { logActivity } = require('../utils/auditLogger');
         logActivity(req, 'CREATE', 'POS', result.id, `POS Invoice #${result.invoiceNumber} created with amount ${result.totalAmount}`);
 

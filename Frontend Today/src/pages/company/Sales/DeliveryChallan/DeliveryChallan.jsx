@@ -21,6 +21,15 @@ import warehouseService from '../../../../api/warehouseService';
 import companyService from '../../../../api/companyService';
 import GetCompanyId from '../../../../api/GetCompanyId';
 import { CompanyContext } from '../../../../context/CompanyContext';
+import '../../Customers/Customers.css';
+import '../../Inventory/ProductInventory/Inventory.css';
+import '../../Inventory/UOM/UOM.css';
+import customerServiceFromServices from '../../../../services/customerService';
+import productServiceFromServices from '../../../../services/productService';
+import categoryService from '../../../../services/categoryService';
+import uomService from '../../../../services/uomService';
+import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
+import { Upload, Loader2 } from 'lucide-react';
 
 const DeliveryChallan = () => {
     const { hasPermission } = useContext(AuthContext);
@@ -50,6 +59,45 @@ const DeliveryChallan = () => {
     };
 
     const [showAddModal, setShowAddModal] = useState(false);
+
+    // Inline Modals States
+    const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+    const [customerFormData, setCustomerFormData] = useState({
+        name: '', email: '', phone: '', company: '', gstin: '',
+        billingAddress: '', billingCity: '', billingState: '', billingZip: '', billingCountry: '',
+        shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', shippingCountry: '',
+        accountBalance: '', notes: '', profileImage: ''
+    });
+    const [uploadingAnyFile, setUploadingAnyFile] = useState(false);
+    const profileImageRef = useRef();
+
+    const [showAddProductModal, setShowAddProductModal] = useState(false);
+    const [productFormData, setProductFormData] = useState({
+        name: '', sku: '', hsn: '', barcode: '', categoryId: '',
+        uomId: '', purchaseUomId: '', salesUomId: '', unit: '', description: '', asOfDate: new Date().toISOString().split('T')[0],
+        taxAccount: '', initialCost: 0, salePrice: 0, purchasePrice: 0,
+        discount: 0, remarks: '', image: null
+    });
+    const [productWarehouseRows, setProductWarehouseRows] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [allUoms, setAllUoms] = useState([]);
+
+    // UOM Modal States
+    const [showUomModal, setShowUomModal] = useState(false);
+    const [uomFormData, setUomFormData] = useState({
+        category: '', unitName: '', weightPerUnit: '', uomType: 'Simple', baseUnitId: '', conversionRate: ''
+    });
+    const measurementCategories = ['Weight', 'Area', 'Volume', 'Length', 'Count'];
+    const unitsByCategory = {
+        'Weight': ['Microgram', 'Milligram', 'Gram', 'Kilogram (KG)', 'Metric Ton (Tonne)', 'Quintal', 'Pound (lb)', 'Ounce (oz)', 'Stone', 'Carat'],
+        'Area': ['Square Millimeter', 'Square Centimeter', 'Square Meter', 'Square Kilometer', 'Square Inch', 'Square Foot', 'Square Yard', 'Acre', 'Hectare', 'Bigha', 'Kanal', 'Cent'],
+        'Volume': ['Millilitre (mL)', 'Litre (L)', 'Cubic Centimeter (cc)', 'Cubic Meter', 'Cubic Inch', 'Cubic Foot', 'Gallon', 'Barrel', 'Pint', 'Quart', 'Fluid Ounce'],
+        'Length': ['Nanometer', 'Micrometer', 'Millimeter', 'Centimeter', 'Meter', 'Kilometer', 'Inch', 'Foot', 'Yard', 'Mile'],
+        'Count': ['Piece', 'Unit', 'Dozen', 'Pair', 'Set', 'Box', 'Packet', 'Carton', 'Bundle', 'Roll', 'Strip', 'Bottle', 'Bag', 'Can', 'Jar', 'Tube']
+    };
     const [creationMode, setCreationMode] = useState('linked'); // 'direct' or 'linked'
     const [showOrderSelect, setShowOrderSelect] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -141,11 +189,12 @@ const DeliveryChallan = () => {
     const fetchDropdowns = async () => {
         try {
             const companyId = GetCompanyId();
-            const [custRes, prodRes, whRes, orderRes] = await Promise.all([
+            const [custRes, prodRes, whRes, orderRes, uomRes] = await Promise.all([
                 customerService.getAll(companyId),
                 productService.getAll(companyId),
                 warehouseService.getAll(companyId),
-                salesOrderService.getAll(companyId)
+                salesOrderService.getAll(companyId),
+                uomService.getUOMs(companyId)
             ]);
             if (custRes.data.success) setCustomers(custRes.data.data);
             if (prodRes.data.success) setAllProducts(prodRes.data.data);
@@ -153,8 +202,256 @@ const DeliveryChallan = () => {
             if (orderRes.data.success) {
                 setActiveOrders(orderRes.data.data.filter(o => o.status !== 'COMPLETED'));
             }
+            if (uomRes.success) {
+                setAllUoms(uomRes.data || []);
+            }
         } catch (error) {
             console.error('Error fetching dropdowns:', error);
+        }
+    };
+
+    useEffect(() => {
+        if (showAddProductModal) {
+            const companyId = GetCompanyId();
+            categoryService.getCategories(companyId).then(res => {
+                if (res.success) setCategories(res.data);
+            });
+        }
+    }, [showAddProductModal]);
+
+    // Inline Customer Handlers
+    const handleCustomerInputChange = (e) => {
+        const { name, value } = e.target;
+        if (name === 'phone') {
+            const cleaned = value.replace(/\D/g, '');
+            setCustomerFormData(prev => ({ ...prev, [name]: cleaned }));
+        } else {
+            setCustomerFormData(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const handleCustomerImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            try {
+                setUploadingAnyFile(true);
+                toast.loading('Uploading profile image...', { id: 'cust-image-upload' });
+                const url = await uploadToCloudinary(file);
+                setCustomerFormData(prev => ({ ...prev, profileImage: url }));
+                toast.success('Image uploaded successfully', { id: 'cust-image-upload' });
+            } catch (error) {
+                console.error(error);
+                toast.error('Failed to upload image', { id: 'cust-image-upload' });
+            } finally {
+                setUploadingAnyFile(false);
+            }
+        }
+    };
+
+    const handleCustomerSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!customerFormData.name || !customerFormData.phone) {
+            toast.error('Name and Phone are required');
+            return;
+        }
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                ...customerFormData,
+                accountBalance: parseFloat(customerFormData.accountBalance) || 0,
+                companyId: parseInt(companyId)
+            };
+            const res = await customerServiceFromServices.createCustomer(payload);
+            if (res.success) {
+                toast.success('Customer added successfully');
+                setShowAddCustomerModal(false);
+                setCustomerFormData({
+                    name: '', email: '', phone: '', company: '', gstin: '',
+                    billingAddress: '', billingCity: '', billingState: '', billingZip: '', billingCountry: '',
+                    shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', shippingCountry: '',
+                    accountBalance: '', notes: '', profileImage: ''
+                });
+                // Reload list of customers
+                const custRes = await customerService.getAll(companyId);
+                if (custRes.data?.success) {
+                    setCustomers(custRes.data.data);
+                }
+                // Pre-select newly created customer
+                if (res.data?.id) {
+                    const cId = res.data.id;
+                    setCustomerId(cId);
+                    const c = res.data;
+                    setCustomerDetails({
+                        address: c.shippingAddress || c.billingAddress || '',
+                        email: c.email || '',
+                        phone: c.phone || '',
+                        city: c.shippingCity || c.billingCity || '',
+                        state: c.shippingState || c.billingState || '',
+                        zipCode: c.shippingZip || c.billingZip || ''
+                    });
+                    setBillingDetails({
+                        address: c.billingAddress || '',
+                        city: c.billingCity || '',
+                        state: c.billingState || '',
+                        zipCode: c.billingZip || ''
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error adding customer:', error);
+            toast.error(error.response?.data?.message || 'Failed to add customer');
+        }
+    };
+
+    // Inline Product Handlers
+    const handleProductInputChange = (e) => {
+        const { name, value } = e.target;
+        setProductFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const addProductWarehouseRow = () => {
+        const firstWhId = allWarehouses.length > 0 ? allWarehouses[0].id : '';
+        setProductWarehouseRows([...productWarehouseRows, {
+            id: Date.now(),
+            warehouseId: firstWhId,
+            quantity: 0,
+            minOrderQty: 0,
+            initialQty: 0
+        }]);
+    };
+
+    const removeProductWarehouseRow = (id) => {
+        setProductWarehouseRows(productWarehouseRows.filter(row => row.id !== id));
+    };
+
+    const handleProductWhRowChange = (id, field, value) => {
+        setProductWarehouseRows(productWarehouseRows.map(row =>
+            row.id === id ? { ...row, [field]: value } : row
+        ));
+    };
+
+    const handleProductImageChange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            try {
+                setUploadingImage(true);
+                toast.loading('Uploading image...', { id: 'prod-image-upload' });
+                const imageUrl = await uploadToCloudinary(file);
+                setProductFormData(prev => ({ ...prev, image: imageUrl }));
+                toast.success('Image uploaded successfully', { id: 'prod-image-upload' });
+            } catch (error) {
+                console.error(error);
+                toast.error('Failed to upload image', { id: 'prod-image-upload' });
+            } finally {
+                setUploadingImage(false);
+            }
+        }
+    };
+
+    const handleProductAddCategorySubmit = async () => {
+        if (!newCategoryName.trim()) return toast.error('Category name is required');
+        try {
+            const companyId = GetCompanyId();
+            const res = await categoryService.createCategory({ name: newCategoryName, companyId });
+            if (res.success) {
+                toast.success('Category added');
+                setShowCategoryModal(false);
+                setNewCategoryName('');
+                const catRes = await categoryService.getCategories(companyId);
+                if (catRes.success) setCategories(catRes.data);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to add category');
+        }
+    };
+
+    const getUniqueCategories = () => {
+        return [...new Set(allUoms.map(u => u.category))];
+    };
+
+    const getAvailableBaseUnitsForCategory = (category) => {
+        return allUoms.filter(u => u.category === category && u.uomType === 'Simple');
+    };
+
+    const handleUomInputChange = (e) => {
+        const { name, value } = e.target;
+        setUomFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleUomSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                category: uomFormData.category,
+                unitName: uomFormData.unitName,
+                weightPerUnit: uomFormData.weightPerUnit,
+                uomType: uomFormData.uomType,
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId))
+                    : null,
+                conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
+                companyId: parseInt(companyId)
+            };
+
+            const res = await uomService.createUOM(payload);
+            if (res.success) {
+                toast.success('Unit added successfully');
+                const uomsRes = await uomService.getUOMs(companyId);
+                if (uomsRes.success) {
+                    setAllUoms(uomsRes.data || []);
+                }
+                setProductFormData(prev => ({
+                    ...prev,
+                    uomId: res.data?.id || prev.uomId,
+                    purchaseUomId: res.data?.id || prev.purchaseUomId,
+                    salesUomId: res.data?.id || prev.salesUomId
+                }));
+                setShowUomModal(false);
+                setUomFormData({
+                    category: '', unitName: '', weightPerUnit: '', uomType: 'Simple', baseUnitId: '', conversionRate: ''
+                });
+            }
+        } catch (error) {
+            console.error('Error saving UOM:', error);
+            toast.error(error.response?.data?.message || 'Failed to save UOM');
+        }
+    };
+
+    const handleFullProductSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!productFormData.name) {
+            toast.error('Item Name is required');
+            return;
+        }
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                ...productFormData,
+                companyId: parseInt(companyId),
+                warehouseInfo: productWarehouseRows.map(row => ({
+                    warehouseId: parseInt(row.warehouseId),
+                    quantity: parseFloat(row.quantity) || 0,
+                    minOrderQty: parseFloat(row.minOrderQty) || 0,
+                    initialQty: parseFloat(row.initialQty) || 0
+                }))
+            };
+            await productServiceFromServices.createProduct(payload);
+            toast.success('Product created successfully!');
+            setShowAddProductModal(false);
+
+            // Refresh products
+            const prodRes = await productService.getAll(companyId);
+            if (prodRes?.data?.success) {
+                setAllProducts(prodRes.data.data);
+            } else if (prodRes?.data) {
+                setAllProducts(prodRes.data);
+            } else if (Array.isArray(prodRes)) {
+                setAllProducts(prodRes);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to create product');
         }
     };
 
@@ -251,7 +548,6 @@ const DeliveryChallan = () => {
     const handleSelectOrder = (order) => {
         setSelectedOrder(order);
         setCustomerId(order.customerId);
-        if (order.notes) setNotes(order.notes);
 
         const c = order.customer || {};
         setCustomerDetails({
@@ -513,7 +809,7 @@ const DeliveryChallan = () => {
                 console.error(e);
             }
         }
-        setItems([...items, { id: Date.now() + Math.random(), productId: '', warehouseId: defWarehouseId, description: '', ordered: 0, delivered: 0, unit: 'pcs' }]);
+        setItems([...items, { id: Date.now(), productId: '', warehouseId: defWarehouseId, description: '', ordered: 0, delivered: 0, unit: 'pcs' }]);
     };
 
     const removeItem = (id) => {
@@ -775,8 +1071,8 @@ const DeliveryChallan = () => {
                                         <select
                                             value={dc.manualStatus ? dc.status : 'AUTO'}
                                             onChange={(e) => handleStatusChange(dc.id, e.target.value)}
-                                             className="Zirak-DC-challan-status-pill"
-                                             style={getStatusStyle(dc.manualStatus ? dc.status : 'AUTO')}
+                                            className="Zirak-DC-challan-status-pill"
+                                            style={getStatusStyle(dc.manualStatus ? dc.status : 'AUTO')}
                                         >
                                             <option value="AUTO">Auto ({dc.status || 'Pending'})</option>
                                             <option value="PENDING">PENDING</option>
@@ -837,17 +1133,17 @@ const DeliveryChallan = () => {
                         <div className="Zirak-DC-modal-body-scrollable" ref={printRef}>
                             {/* Modal Step Indicator - Only for Create/Edit */}
                             {!isViewMode && (
-                            <div className="Zirak-DC-modal-step-stepper">
-                                <div className={`Zirak-DC-m-step ${activeModalStep >= 1 ? 'active' : ''} ${activeModalStep > 1 ? 'done' : ''}`}>
-                                    <div className="Zirak-DC-m-step-num">{activeModalStep > 1 ? '✓' : '1'}</div>
-                                    <span>Select Order</span>
+                                <div className="Zirak-DC-modal-step-stepper">
+                                    <div className={`Zirak-DC-m-step ${activeModalStep >= 1 ? 'active' : ''} ${activeModalStep > 1 ? 'done' : ''}`}>
+                                        <div className="Zirak-DC-m-step-num">{activeModalStep > 1 ? '✓' : '1'}</div>
+                                        <span>Select Order</span>
+                                    </div>
+                                    <div className={`Zirak-DC-m-step-line ${activeModalStep >= 2 ? 'active' : ''}`}></div>
+                                    <div className={`Zirak-DC-m-step ${activeModalStep >= 2 ? 'active' : ''}`}>
+                                        <div className="Zirak-DC-m-step-num">2</div>
+                                        <span>Challan Details</span>
+                                    </div>
                                 </div>
-                                <div className={`Zirak-DC-m-step-line ${activeModalStep >= 2 ? 'active' : ''}`}></div>
-                                <div className={`Zirak-DC-m-step ${activeModalStep >= 2 ? 'active' : ''}`}>
-                                    <div className="Zirak-DC-m-step-num">2</div>
-                                    <span>Challan Details</span>
-                                </div>
-                            </div>
                             )}
 
                             {/* Step 1: Order Selection List (Conditional) */}
@@ -885,11 +1181,9 @@ const DeliveryChallan = () => {
                                                     onChange={(e) => setOrderSearchTerm(e.target.value)}
                                                 />
                                             </div>
-                                            {hasPermission('bypass strict conversion') && (
-                                                <button className="Zirak-DC-btn-direct-entry" onClick={() => { setCreationMode('direct'); setActiveModalStep(2); }}>
-                                                    Direct Delivery (No Order) <ArrowRight size={14} className="ml-1" />
-                                                </button>
-                                            )}
+                                            <button className="Zirak-DC-btn-direct-entry" onClick={() => { setCreationMode('direct'); setActiveModalStep(2); }}>
+                                                Direct Delivery (No Order) <ArrowRight size={14} className="ml-1" />
+                                            </button>
                                         </div>
                                     </div>
 
@@ -942,507 +1236,557 @@ const DeliveryChallan = () => {
                             {/* Step 2: Main Form */}
                             {activeModalStep === 2 && (
                                 <>
-                                {/* ========== VIEW MODE: Challan Document ========== */}
-                                {isViewMode ? (
-                                    <div className="Zirak-DC-view-challan-doc">
-                                        <div
-                                            className={`invoice-preview-container template-${(companySettings?.invoiceTemplate || 'New York').toLowerCase().replace(' ', '').replace('invoice-', '')}`}
-                                            style={{
-                                                '--header-bg': companySettings?.invoiceColor || '#004aad',
-                                                '--header-text': (() => {
-                                                    const hex = (companySettings?.invoiceColor || '#004aad').replace('#', '');
-                                                    const r = parseInt(hex.substr(0, 2), 16);
-                                                    const g = parseInt(hex.substr(2, 2), 16);
-                                                    const b = parseInt(hex.substr(4, 2), 16);
-                                                    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-                                                    return (yiq >= 150) ? '#1e293b' : '#ffffff';
-                                                })()
-                                            }}
-                                        >
-                                            {getInvoiceLabel('showHeader') !== false && (
-                                                <div className="invoice-header-wrapper" style={{ border: 'none', padding: '0', margin: '0' }}>
-                                                    <div className="invoice-preview-header" style={{ marginBottom: '10px' }}>
-                                                        <div className="invoice-header-left">
-                                                            {(companySettings?.invoiceLogo || companyDetails.logo) && (
-                                                                <img src={companySettings?.invoiceLogo || companyDetails.logo} alt="Company Logo" className="invoice-logo-large" style={{ margin: '0' }} />
+                                    {/* ========== VIEW MODE: Challan Document ========== */}
+                                    {isViewMode ? (
+                                        <div className="Zirak-DC-view-challan-doc">
+                                            <div
+                                                className={`invoice-preview-container template-${(companySettings?.invoiceTemplate || 'New York').toLowerCase().replace(' ', '').replace('invoice-', '')}`}
+                                                style={{
+                                                    '--header-bg': companySettings?.invoiceColor || '#004aad',
+                                                    '--header-text': (() => {
+                                                        const hex = (companySettings?.invoiceColor || '#004aad').replace('#', '');
+                                                        const r = parseInt(hex.substr(0, 2), 16);
+                                                        const g = parseInt(hex.substr(2, 2), 16);
+                                                        const b = parseInt(hex.substr(4, 2), 16);
+                                                        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+                                                        return (yiq >= 150) ? '#1e293b' : '#ffffff';
+                                                    })()
+                                                }}
+                                            >
+                                                {getInvoiceLabel('showHeader') !== false && (
+                                                    <div className="invoice-header-wrapper" style={{ border: 'none', padding: '0', margin: '0' }}>
+                                                        <div className="invoice-preview-header" style={{ marginBottom: '10px' }}>
+                                                            <div className="invoice-header-left">
+                                                                {(companySettings?.invoiceLogo || companyDetails.logo) && (
+                                                                    <img src={companySettings?.invoiceLogo || companyDetails.logo} alt="Company Logo" className="invoice-logo-large" style={{ margin: '0' }} />
+                                                                )}
+                                                            </div>
+                                                            <div className="invoice-header-right">
+                                                                <div className="invoice-title-large" style={{ color: companySettings?.invoiceColor || '#004aad', margin: '0' }}>{getDocumentTitle('deliverychallan')}</div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="invoice-preview-header" style={{ alignItems: 'flex-start' }}>
+                                                            <div className="invoice-header-left">
+                                                                <div className="invoice-company-details">
+                                                                    <h2 style={{ color: companySettings?.invoiceColor || '#004aad', margin: '0 0 5px 0', fontSize: '1.6rem', fontWeight: '900' }}>
+                                                                        {companyDetails.name}
+                                                                    </h2>
+                                                                    <p>{companyDetails.address}</p>
+                                                                    <p>{companyDetails.email} | {companyDetails.phone}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="invoice-header-right">
+                                                                <div className="invoice-meta-info">
+                                                                    <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                        <span className="invoice-label">Challan No:</span>
+                                                                        <span>#{challanMeta?.challanNo || '—'}</span>
+                                                                    </div>
+                                                                    <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                        <span className="invoice-label">Date:</span>
+                                                                        <span>{challanMeta.date ? new Date(challanMeta.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                                    </div>
+                                                                    {challanMeta.manualNo && (
+                                                                        <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                            <span className="invoice-label">Manual Ref:</span>
+                                                                            <span>{challanMeta.manualNo}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {challanMeta.vehicleNo && (
+                                                                        <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                            <span className="invoice-label">Vehicle No:</span>
+                                                                            <span>{challanMeta.vehicleNo}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="invoice-addresses" style={{ display: 'flex', justifyContent: 'space-between', width: '100% !important', marginTop: '2.5rem', gap: '3rem' }}>
+                                                    <div className="invoice-bill-to" style={{ flex: 1, textAlign: 'left', minWidth: '0' }}>
+                                                        <div className="invoice-section-header">BILL TO</div>
+                                                        <div className="font-bold" style={{ fontSize: '1.2rem', color: '#1e293b' }}>
+                                                            {customers.find(c => c.id === parseInt(customerId))?.name || '—'}
+                                                        </div>
+                                                        {billingDetails.address && <div style={{ marginTop: '8px', color: '#475569', fontWeight: '500', fontSize: '0.95rem', lineHeight: '1.4' }}>{billingDetails.address}</div>}
+                                                        {[billingDetails.city, billingDetails.state, billingDetails.zipCode].filter(Boolean).length > 0 && (
+                                                            <div style={{ color: '#475569', fontWeight: '500', fontSize: '0.95rem' }}>{[billingDetails.city, billingDetails.state, billingDetails.zipCode].filter(Boolean).join(', ')}</div>
+                                                        )}
+                                                        {(() => {
+                                                            const cust = customers.find(c => c.id === parseInt(customerId));
+                                                            return (<>
+                                                                {cust?.phone && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{cust.phone}</div>}
+                                                                {cust?.email && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{cust.email}</div>}
+                                                            </>);
+                                                        })()}
+                                                    </div>
+
+                                                    <div className="invoice-ship-to" style={{ flex: 1, textAlign: 'left', minWidth: '0' }}>
+                                                        <div className="invoice-section-header">SHIP TO / DESTINATION</div>
+                                                        <div className="font-bold" style={{ fontSize: '1.2rem', color: '#1e293b' }}>
+                                                            {customers.find(c => c.id === parseInt(customerId))?.name || '—'}
+                                                        </div>
+                                                        {customerDetails.address && <div style={{ marginTop: '8px', color: '#475569', fontWeight: '500', fontSize: '0.95rem', lineHeight: '1.4' }}>{customerDetails.address}</div>}
+                                                        {[customerDetails.city, customerDetails.state, customerDetails.zipCode].filter(Boolean).length > 0 && (
+                                                            <div style={{ color: '#475569', fontWeight: '500', fontSize: '0.95rem' }}>{[customerDetails.city, customerDetails.state, customerDetails.zipCode].filter(Boolean).join(', ')}</div>
+                                                        )}
+                                                        {customerDetails.phone && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{customerDetails.phone}</div>}
+                                                        {customerDetails.email && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{customerDetails.email}</div>}
+                                                    </div>
+                                                </div>
+
+                                                {/* Custom Fields Print View */}
+                                                {(() => {
+                                                    const dc = deliveryChallans.find(c => c.id === editId);
+                                                    let customFieldVals = {};
+                                                    if (dc?.customFields) {
+                                                        try {
+                                                            customFieldVals = typeof dc.customFields === 'string'
+                                                                ? JSON.parse(dc.customFields)
+                                                                : dc.customFields;
+                                                        } catch (e) {
+                                                            console.error('Error parsing delivery challan custom fields for view:', e);
+                                                        }
+                                                    }
+                                                    const fieldsList = getCustomFieldsForType('deliverychallan');
+                                                    const activeCustomFields = fieldsList.filter(f => customFieldVals[f.label]);
+                                                    if (activeCustomFields.length === 0) return null;
+                                                    return (
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', margin: '20px 0', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', textAlign: 'left' }}>
+                                                            {activeCustomFields.map(field => (
+                                                                <div key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>{field.label}</span>
+                                                                    <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#1e293b', marginTop: '2px' }}>{customFieldVals[field.label]}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                <table className="invoice-table-preview" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '2rem' }}>
+                                                    <thead>
+                                                        <tr>
+                                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>#</th>
+                                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('item', 'Product / Description').toUpperCase()}</th>
+                                                            {getInvoiceLabel('showWarehouse') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
+                                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>ORDERED</th>
+                                                            <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>DELIVERED</th>
+                                                            {getInvoiceLabel('showUom') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>{getTableHeader('uom', 'Unit').toUpperCase()}</th>}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {items.map((item, idx) => {
+                                                            const prod = allProducts.find(p => p.id === Number(item.productId));
+                                                            return (
+                                                                <tr key={item.id}>
+                                                                    <td style={{ width: '5%' }}>{idx + 1}</td>
+                                                                    <td style={{ width: '35%' }}>
+                                                                        <div className="font-bold text-sm text-gray-800">{prod?.name || 'Unknown Product'}</div>
+                                                                        {item.description && <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>}
+                                                                    </td>
+                                                                    {getInvoiceLabel('showWarehouse') !== false && <td>{allWarehouses.find(w => w.id === parseInt(item.warehouseId))?.name || 'N/A'}</td>}
+                                                                    <td style={{ textAlign: 'center' }}>{item.ordered}</td>
+                                                                    <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.delivered}</td>
+                                                                    {getInvoiceLabel('showUom') !== false && <td style={{ textAlign: 'center' }}>{item.unit || 'pcs'}</td>}
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+
+                                                {getInvoiceLabel('showFooter') !== false && (
+                                                    <div style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                                                        <div className="Zirak-DC-vcd-notes-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', margin: '0 0 2rem 0' }}>
+                                                            {challanMeta.transportNote && (
+                                                                <div>
+                                                                    <strong style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Transport / Logistics Note</strong>
+                                                                    <p style={{ color: '#475569', fontSize: '0.9rem', whiteSpace: 'pre-line', marginTop: '4px' }}>{challanMeta.transportNote}</p>
+                                                                </div>
+                                                            )}
+                                                            {challanMeta.remarks && (
+                                                                <div>
+                                                                    <strong style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Remarks</strong>
+                                                                    <p style={{ color: '#475569', fontSize: '0.9rem', whiteSpace: 'pre-line', marginTop: '4px' }}>{challanMeta.remarks}</p>
+                                                                </div>
                                                             )}
                                                         </div>
-                                                        <div className="invoice-header-right">
-                                                            <div className="invoice-title-large" style={{ color: companySettings?.invoiceColor || '#004aad', margin: '0' }}>{getDocumentTitle('deliverychallan')}</div>
-                                                        </div>
-                                                    </div>
 
-                                                    <div className="invoice-preview-header" style={{ alignItems: 'flex-start' }}>
-                                                        <div className="invoice-header-left">
-                                                            <div className="invoice-company-details">
-                                                                <h2 style={{ color: companySettings?.invoiceColor || '#004aad', margin: '0 0 5px 0', fontSize: '1.6rem', fontWeight: '900' }}>
-                                                                    {companyDetails.name}
-                                                                </h2>
-                                                                <p>{companyDetails.address}</p>
-                                                                <p>{companyDetails.email} | {companyDetails.phone}</p>
+                                                        <div className="Zirak-DC-vcd-sig-row" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3rem' }}>
+                                                            <div className="Zirak-DC-vcd-sig-box" style={{ width: '200px', textAlign: 'center' }}>
+                                                                <div className="Zirak-DC-vcd-sig-line" style={{ borderBottom: '1px solid #cbd5e1', marginBottom: '8px' }}></div>
+                                                                <div className="Zirak-DC-vcd-sig-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Authorized Signatory</div>
+                                                            </div>
+                                                            <div className="Zirak-DC-vcd-sig-box" style={{ width: '200px', textAlign: 'center' }}>
+                                                                <div className="Zirak-DC-vcd-sig-line" style={{ borderBottom: '1px solid #cbd5e1', marginBottom: '8px' }}></div>
+                                                                <div className="Zirak-DC-vcd-sig-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Received By</div>
                                                             </div>
                                                         </div>
-                                                        <div className="invoice-header-right">
-                                                            <div className="invoice-meta-info">
-                                                                <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
-                                                                    <span className="invoice-label">Challan No:</span>
-                                                                    <span>#{challanMeta?.challanNo || '—'}</span>
-                                                                </div>
-                                                                <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
-                                                                    <span className="invoice-label">Date:</span>
-                                                                    <span>{challanMeta.date ? new Date(challanMeta.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
-                                                                </div>
-                                                                {challanMeta.manualNo && (
-                                                                    <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
-                                                                        <span className="invoice-label">Manual Ref:</span>
-                                                                        <span>{challanMeta.manualNo}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        /* ========== CREATE/EDIT MODE: Form ========== */
+                                        <>
+                                            <div className="Zirak-DC-form-section-grid">
+                                                <div className="Zirak-DC-company-info-card">
+                                                    <div className="Zirak-DC-company-card-strip"></div>
+                                                    <div className="Zirak-DC-company-info-card-inner">
+                                                        <div className="Zirak-DC-company-header-flex">
+                                                            <div className="Zirak-DC-logo-upload-box">
+                                                                {companyDetails.logo ? (
+                                                                    <img src={companyDetails.logo} alt="Company Logo" style={{ maxWidth: '100%', maxHeight: '60px', objectFit: 'contain' }} />
+                                                                ) : (
+                                                                    <div className="Zirak-DC-logo-placeholder">
+                                                                        <Truck size={28} color="white" />
                                                                     </div>
                                                                 )}
-                                                                {challanMeta.vehicleNo && (
-                                                                    <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
-                                                                        <span className="invoice-label">Vehicle No:</span>
-                                                                        <span>{challanMeta.vehicleNo}</span>
-                                                                    </div>
-                                                                )}
+                                                            </div>
+                                                            <div className="Zirak-DC-company-details-inputs">
+                                                                <input type="text" className="Zirak-DC-full-width-input font-bold text-lg"
+                                                                    value={companyDetails.name} readOnly disabled />
+                                                                <input type="text" className="Zirak-DC-full-width-input Zirak-DC-text-gray-500"
+                                                                    value={companyDetails.address} readOnly disabled />
+                                                                <div className="Zirak-DC-grid Zirak-DC-grid-cols-2 gap-2 mt-2">
+                                                                    <input type="text" className="Zirak-DC-full-width-input Zirak-DC-text-gray-500"
+                                                                        placeholder="Phone"
+                                                                        value={companyDetails.phone} readOnly disabled />
+                                                                    <input type="text" className="Zirak-DC-full-width-input Zirak-DC-text-gray-500"
+                                                                        placeholder="Email"
+                                                                        value={companyDetails.email} readOnly disabled />
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            )}
 
-                                            <div className="invoice-addresses" style={{ display: 'flex', justifyContent: 'space-between', width: '100% !important', marginTop: '2.5rem', gap: '3rem' }}>
-                                                <div className="invoice-bill-to" style={{ flex: 1, textAlign: 'left', minWidth: '0' }}>
-                                                    <div className="invoice-section-header">BILL TO</div>
-                                                    <div className="font-bold" style={{ fontSize: '1.2rem', color: '#1e293b' }}>
-                                                        {customers.find(c => c.id === parseInt(customerId))?.name || '—'}
+                                                <div className="Zirak-DC-meta-fields-col">
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Challan No.</label>
+                                                        <input
+                                                            type="text"
+                                                            value={challanMeta.challanNo || ''}
+                                                            onChange={(e) => setChallanMeta({ ...challanMeta, challanNo: e.target.value })}
+                                                            disabled={isViewMode || !!editId}
+                                                            className={`Zirak-DC-meta-input ${isViewMode || editId ? 'Zirak-DC-disabled' : ''}`}
+                                                        />
                                                     </div>
-                                                    {billingDetails.address && <div style={{ marginTop: '8px', color: '#475569', fontWeight: '500', fontSize: '0.95rem', lineHeight: '1.4' }}>{billingDetails.address}</div>}
-                                                    {[billingDetails.city, billingDetails.state, billingDetails.zipCode].filter(Boolean).length > 0 && (
-                                                        <div style={{ color: '#475569', fontWeight: '500', fontSize: '0.95rem' }}>{[billingDetails.city, billingDetails.state, billingDetails.zipCode].filter(Boolean).join(', ')}</div>
-                                                    )}
-                                                    {(() => {
-                                                        const cust = customers.find(c => c.id === parseInt(customerId));
-                                                        return (<>
-                                                            {cust?.phone && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{cust.phone}</div>}
-                                                            {cust?.email && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{cust.email}</div>}
-                                                        </>);
-                                                    })()}
-                                                </div>
-
-                                                <div className="invoice-ship-to" style={{ flex: 1, textAlign: 'left', minWidth: '0' }}>
-                                                    <div className="invoice-section-header">SHIP TO / DESTINATION</div>
-                                                    <div className="font-bold" style={{ fontSize: '1.2rem', color: '#1e293b' }}>
-                                                        {customers.find(c => c.id === parseInt(customerId))?.name || '—'}
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Manual Ref</label>
+                                                        <input type="text" placeholder="e.g. DC-MAN-01"
+                                                            value={challanMeta.manualNo} onChange={(e) => setChallanMeta({ ...challanMeta, manualNo: e.target.value })}
+                                                            className="Zirak-DC-meta-input" />
                                                     </div>
-                                                    {customerDetails.address && <div style={{ marginTop: '8px', color: '#475569', fontWeight: '500', fontSize: '0.95rem', lineHeight: '1.4' }}>{customerDetails.address}</div>}
-                                                    {[customerDetails.city, customerDetails.state, customerDetails.zipCode].filter(Boolean).length > 0 && (
-                                                        <div style={{ color: '#475569', fontWeight: '500', fontSize: '0.95rem' }}>{[customerDetails.city, customerDetails.state, customerDetails.zipCode].filter(Boolean).join(', ')}</div>
-                                                    )}
-                                                    {customerDetails.phone && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{customerDetails.phone}</div>}
-                                                    {customerDetails.email && <div style={{ color: '#475569', fontSize: '0.95rem' }}>{customerDetails.email}</div>}
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Date</label>
+                                                        <input type="date"
+                                                            value={challanMeta.date} onChange={(e) => setChallanMeta({ ...challanMeta, date: e.target.value })}
+                                                            className="Zirak-DC-meta-input" />
+                                                    </div>
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Vehicle No</label>
+                                                        <input type="text"
+                                                            value={challanMeta.vehicleNo} onChange={(e) => setChallanMeta({ ...challanMeta, vehicleNo: e.target.value })}
+                                                            className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999' />
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            {/* Custom Fields Print View */}
-                                            {(() => {
-                                                const dc = deliveryChallans.find(c => c.id === editId);
-                                                let customFieldVals = {};
-                                                if (dc?.customFields) {
-                                                    try {
-                                                        customFieldVals = typeof dc.customFields === 'string'
-                                                            ? JSON.parse(dc.customFields)
-                                                            : dc.customFields;
-                                                    } catch (e) {
-                                                        console.error('Error parsing delivery challan custom fields for view:', e);
-                                                    }
-                                                }
-                                                const fieldsList = getCustomFieldsForType('deliverychallan');
-                                                const activeCustomFields = fieldsList.filter(f => customFieldVals[f.label]);
-                                                if (activeCustomFields.length === 0) return null;
-                                                return (
-                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px', margin: '20px 0', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', textAlign: 'left' }}>
-                                                        {activeCustomFields.map(field => (
-                                                            <div key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>{field.label}</span>
-                                                                <span style={{ fontSize: '0.95rem', fontWeight: '600', color: '#1e293b', marginTop: '2px' }}>{customFieldVals[field.label]}</span>
+                                            <div className="Zirak-DC-customer-selection-area">
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                    <label className="Zirak-DC-form-label-sm font-bold Zirak-DC-text-slate-700">Customer</label>
+                                                    {!selectedOrder && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowAddCustomerModal(true)}
+                                                            style={{
+                                                                backgroundColor: '#22c55e',
+                                                                color: '#ffffff',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '2px 8px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 'bold',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px'
+                                                            }}
+                                                        >
+                                                            <Plus size={12} /> Add Customer
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <select
+                                                    className="Zirak-DC-purchase-module-select-large"
+                                                    style={{ flex: 1, width: 'auto' }}
+                                                    value={customerId}
+                                                    disabled={selectedOrder}
+                                                    onChange={(e) => {
+                                                        const cId = parseInt(e.target.value);
+                                                        setCustomerId(cId);
+                                                        const c = customers.find(cust => cust.id === cId);
+                                                        if (c) {
+                                                            setCustomerDetails({
+                                                                address: c.shippingAddress || c.billingAddress || '',
+                                                                email: c.email || '',
+                                                                phone: c.phone || '',
+                                                                city: c.shippingCity || c.billingCity || '',
+                                                                state: c.shippingState || c.billingState || '',
+                                                                zipCode: c.shippingZipCode || c.billingZipCode || ''
+                                                            });
+                                                            setBillingDetails({
+                                                                address: c.billingAddress || '',
+                                                                city: c.billingCity || '',
+                                                                state: c.billingState || '',
+                                                                zipCode: c.billingZipCode || ''
+                                                            });
+                                                        }
+                                                    }}>
+                                                    <option value="">Select Customer...</option>
+                                                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                            </div>
+
+                                            <div className="Zirak-DC-address-double-grid">
+                                                <div className="Zirak-DC-address-col">
+                                                    <h3><MapPin size={16} color="var(--primary)" /> Billing Address</h3>
+                                                    <div className="Zirak-DC-readonly-address-box">
+                                                        <p className="font-bold Zirak-DC-text-slate-800">
+                                                            {customers.find(c => c.id === parseInt(customerId))?.name || 'Customer'}
+                                                        </p>
+                                                        {billingDetails.address
+                                                            ? <p style={{ marginTop: '4px' }}>{billingDetails.address}</p>
+                                                            : !customerId && <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Select a customer to see billing details</p>
+                                                        }
+                                                        {(billingDetails.city || billingDetails.state || billingDetails.zipCode) && (
+                                                            <p>{[billingDetails.city, billingDetails.state, billingDetails.zipCode].filter(Boolean).join(', ')}</p>
+                                                        )}
+                                                        {(() => {
+                                                            const cust = customers.find(c => c.id === parseInt(customerId));
+                                                            return (<>
+                                                                {cust?.phone && <p style={{ marginTop: '6px', color: '#059669', fontWeight: '600' }}>{cust.phone}</p>}
+                                                                {cust?.email && <p style={{ color: '#0284c7' }}>{cust.email}</p>}
+                                                            </>);
+                                                        })()}
+                                                    </div>
+                                                </div>
+                                                <div className="Zirak-DC-address-col">
+                                                    <h3><Truck size={16} color="var(--primary)" /> Delivery Destination</h3>
+                                                    <div className="Zirak-DC-readonly-address-box" style={{ borderColor: '#d1fae5', background: 'linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%)' }}>
+                                                        <p className="font-bold Zirak-DC-text-slate-800">
+                                                            {customers.find(c => c.id === parseInt(customerId))?.name || 'Customer'}
+                                                        </p>
+                                                        {customerDetails.address && <p style={{ marginTop: '4px' }}>{customerDetails.address}</p>}
+                                                        {(customerDetails.city || customerDetails.state || customerDetails.zipCode) && (
+                                                            <p>{[customerDetails.city, customerDetails.state, customerDetails.zipCode].filter(Boolean).join(', ')}</p>
+                                                        )}
+                                                        {customerDetails.phone && (
+                                                            <p style={{ marginTop: '6px', color: '#059669', fontWeight: '600' }}>{customerDetails.phone}</p>
+                                                        )}
+                                                        {customerDetails.email && (
+                                                            <p style={{ color: '#0284c7' }}>{customerDetails.email}</p>
+                                                        )}
+                                                        {!customerId && (
+                                                            <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Select a customer to see delivery details</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Custom Fields Section */}
+                                            {getCustomFieldsForType('deliverychallan').length > 0 && (
+                                                <div className="DeliveryChallan-custom-fields-section" style={{ margin: '20px 0', padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                                    <h4 style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#334155', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                                        Custom Fields
+                                                    </h4>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '15px' }}>
+                                                        {getCustomFieldsForType('deliverychallan').map(field => (
+                                                            <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', textAlign: 'left' }}>
+                                                                    {field.label} {field.required && <span style={{ color: '#ef4444' }}>*</span>}
+                                                                </label>
+                                                                {field.type === 'select' ? (
+                                                                    <select
+                                                                        value={customFieldValues[field.label] || ''}
+                                                                        onChange={(e) => setCustomFieldValues(prev => ({ ...prev, [field.label]: e.target.value }))}
+                                                                        style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%', backgroundColor: 'white' }}
+                                                                        required={field.required}
+                                                                    >
+                                                                        <option value="">Select...</option>
+                                                                        {(field.options || '').split(',').map(opt => opt.trim()).filter(Boolean).map(opt => (
+                                                                            <option key={opt} value={opt}>{opt}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                ) : (
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={`Enter ${field.label}`}
+                                                                        value={customFieldValues[field.label] || ''}
+                                                                        onChange={(e) => setCustomFieldValues(prev => ({ ...prev, [field.label]: e.target.value }))}
+                                                                        style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%' }}
+                                                                        required={field.required}
+                                                                    />
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
-                                                );
-                                            })()}
-
-                                            <table className="invoice-table-preview" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '2rem' }}>
-                                                <thead>
-                                                    <tr>
-                                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>#</th>
-                                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('item', 'Product / Description').toUpperCase()}</th>
-                                                        {getInvoiceLabel('showWarehouse') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('warehouse', 'Warehouse').toUpperCase()}</th>}
-                                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>ORDERED</th>
-                                                        <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>DELIVERED</th>
-                                                        {getInvoiceLabel('showUom') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'center' }}>{getTableHeader('uom', 'Unit').toUpperCase()}</th>}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {items.map((item, idx) => {
-                                                        const prod = allProducts.find(p => p.id === Number(item.productId));
-                                                        return (
-                                                            <tr key={item.id}>
-                                                                <td style={{ width: '5%' }}>{idx + 1}</td>
-                                                                <td style={{ width: '35%' }}>
-                                                                    <div className="font-bold text-sm text-gray-800">{prod?.name || 'Unknown Product'}</div>
-                                                                    {item.description && <div className="text-xs text-gray-500 mt-0.5">{item.description}</div>}
-                                                                </td>
-                                                                {getInvoiceLabel('showWarehouse') !== false && <td>{allWarehouses.find(w => w.id === parseInt(item.warehouseId))?.name || 'N/A'}</td>}
-                                                                <td style={{ textAlign: 'center' }}>{item.ordered}</td>
-                                                                <td style={{ textAlign: 'center', fontWeight: '600' }}>{item.delivered}</td>
-                                                                {getInvoiceLabel('showUom') !== false && <td style={{ textAlign: 'center' }}>{item.unit || 'pcs'}</td>}
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-
-                                            {getInvoiceLabel('showFooter') !== false && (
-                                                <div style={{ marginTop: '2rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
-                                                    <div className="Zirak-DC-vcd-notes-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', margin: '0 0 2rem 0' }}>
-                                                        {challanMeta.transportNote && (
-                                                            <div>
-                                                                <strong style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Transport / Logistics Note</strong>
-                                                                <p style={{ color: '#475569', fontSize: '0.9rem', whiteSpace: 'pre-line', marginTop: '4px' }}>{challanMeta.transportNote}</p>
-                                                            </div>
-                                                        )}
-                                                        {challanMeta.remarks && (
-                                                            <div>
-                                                                <strong style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase' }}>Remarks</strong>
-                                                                <p style={{ color: '#475569', fontSize: '0.9rem', whiteSpace: 'pre-line', marginTop: '4px' }}>{challanMeta.remarks}</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="Zirak-DC-vcd-sig-row" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3rem' }}>
-                                                        <div className="Zirak-DC-vcd-sig-box" style={{ width: '200px', textAlign: 'center' }}>
-                                                            <div className="Zirak-DC-vcd-sig-line" style={{ borderBottom: '1px solid #cbd5e1', marginBottom: '8px' }}></div>
-                                                            <div className="Zirak-DC-vcd-sig-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Authorized Signatory</div>
-                                                        </div>
-                                                        <div className="Zirak-DC-vcd-sig-box" style={{ width: '200px', textAlign: 'center' }}>
-                                                            <div className="Zirak-DC-vcd-sig-line" style={{ borderBottom: '1px solid #cbd5e1', marginBottom: '8px' }}></div>
-                                                            <div className="Zirak-DC-vcd-sig-label" style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Received By</div>
-                                                        </div>
-                                                    </div>
                                                 </div>
                                             )}
-                                        </div>
-                                    </div>
-                                ) : (
-                                /* ========== CREATE/EDIT MODE: Form ========== */
-                                <>
-                                    <div className="Zirak-DC-form-section-grid">
-                                        <div className="Zirak-DC-company-info-card">
-                                            <div className="Zirak-DC-company-card-strip"></div>
-                                            <div className="Zirak-DC-company-info-card-inner">
-                                            <div className="Zirak-DC-company-header-flex">
-                                                <div className="Zirak-DC-logo-upload-box">
-                                                    {companyDetails.logo ? (
-                                                        <img src={companyDetails.logo} alt="Company Logo" style={{ maxWidth: '100%', maxHeight: '60px', objectFit: 'contain' }} />
-                                                    ) : (
-                                                        <div className="Zirak-DC-logo-placeholder">
-                                                            <Truck size={28} color="white" />
-                                                        </div>
-                                                    )}
+
+                                            {/* Items Section */}
+                                            <div className="Zirak-DC-section-header-flex mt-4 mb-3">
+                                                <h3 className="text-lg font-bold flex items-center gap-2">
+                                                    <PackageCheck size={20} color="var(--primary)" /> Delivery Items
+                                                </h3>
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <button className="Zirak-DC-btn-add-row-mini" onClick={addItem}>
+                                                        <Plus size={14} /> Add Line Item
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="Zirak-DC-btn-add-row-mini"
+                                                        onClick={() => {
+                                                            setProductWarehouseRows(allWarehouses.map(wh => ({
+                                                                id: wh.id,
+                                                                warehouseId: wh.id,
+                                                                quantity: 0,
+                                                                minOrderQty: 0,
+                                                                initialQty: 0
+                                                            })));
+                                                            setShowAddProductModal(true);
+                                                        }}
+                                                        style={{
+                                                            backgroundColor: '#22c55e',
+                                                            borderColor: '#22c55e',
+                                                            color: '#ffffff'
+                                                        }}
+                                                    >
+                                                        <Plus size={14} /> Add Product
+                                                    </button>
                                                 </div>
-                                                <div className="Zirak-DC-company-details-inputs">
-                                                    <input type="text" className="Zirak-DC-full-width-input font-bold text-lg"
-                                                        value={companyDetails.name} readOnly disabled />
-                                                    <input type="text" className="Zirak-DC-full-width-input Zirak-DC-text-gray-500"
-                                                        value={companyDetails.address} readOnly disabled />
-                                                    <div className="Zirak-DC-grid Zirak-DC-grid-cols-2 gap-2 mt-2">
-                                                        <input type="text" className="Zirak-DC-full-width-input Zirak-DC-text-gray-500"
-                                                            placeholder="Phone"
-                                                            value={companyDetails.phone} readOnly disabled />
-                                                        <input type="text" className="Zirak-DC-full-width-input Zirak-DC-text-gray-500"
-                                                            placeholder="Email"
-                                                            value={companyDetails.email} readOnly disabled />
-                                                    </div>
+                                            </div>
+
+                                            <div className="Zirak-DC-items-section-new">
+                                                <div className="Zirak-DC-table-responsive">
+                                                    <table className="Zirak-DC-new-items-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style={{ width: '30%' }}>{getTableHeader('item', 'Product').toUpperCase()}</th>
+                                                                {getInvoiceLabel('showWarehouse') !== false && <th style={{ width: '20%' }}>{getTableHeader('warehouse', 'WH / Location').toUpperCase()}</th>}
+                                                                <th style={{ width: '15%', textAlign: 'center' }}>ORDERED</th>
+                                                                <th style={{ width: '15%', textAlign: 'center' }}>DELIVERY QTY</th>
+                                                                {getInvoiceLabel('showUom') !== false && <th style={{ width: '10%', textAlign: 'center' }}>{getTableHeader('uom', 'Unit').toUpperCase()}</th>}
+                                                                <th style={{ width: '10%', textAlign: 'center' }}>ACTION</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {items.map(item => (
+                                                                <React.Fragment key={item.id}>
+                                                                    <tr className="Zirak-DC-main-item-row Zirak-DC-hover:bg-slate-50">
+                                                                        <td>
+                                                                            <select className="Zirak-DC-full-width-input font-bold"
+                                                                                value={Number(item.productId) || ''}
+                                                                                onChange={(e) => {
+                                                                                    const pId = Number(e.target.value);
+                                                                                    const product = allProducts.find(p => p.id === pId);
+                                                                                    updateItem(item.id, 'productId', pId);
+                                                                                    if (product) {
+                                                                                        updateItem(item.id, 'unit', product.uom?.unitName || product.salesUom?.unitName || product.unit || 'pcs');
+                                                                                        if (!item.description) updateItem(item.id, 'description', product.name);
+                                                                                    }
+                                                                                }}>
+                                                                                <option value="">Select Product...</option>
+                                                                                {allProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.totalQuantity ?? 0})</option>)}
+                                                                            </select>
+                                                                        </td>
+                                                                        {getInvoiceLabel('showWarehouse') !== false && (
+                                                                            <td>
+                                                                                <select className="Zirak-DC-full-width-input"
+                                                                                    value={item.warehouseId || ''}
+                                                                                    onChange={(e) => updateItem(item.id, 'warehouseId', e.target.value)}>
+                                                                                    <option value="">Select Warehouse...</option>
+                                                                                    {allWarehouses.map(w => {
+                                                                                        const prod = allProducts.find(p => p.id === Number(item.productId));
+                                                                                        const stockItem = prod?.stock?.find(s => Number(s.warehouseId) === Number(w.id));
+                                                                                        const count = stockItem ? stockItem.quantity : 0;
+                                                                                        return <option key={w.id} value={w.id}>{w.name} ({count})</option>;
+                                                                                    })}
+                                                                                </select>
+                                                                            </td>
+                                                                        )}
+                                                                        <td className="text-center">
+                                                                            <input type="number"
+                                                                                className="Zirak-DC-qty-input-premium"
+                                                                                value={item.ordered}
+                                                                                min="0"
+                                                                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                                                                                onChange={(e) => updateItem(item.id, 'ordered', e.target.value.replace(/-/g, ''))}
+                                                                            />
+                                                                        </td>
+                                                                        <td className="text-center">
+                                                                            <input type="number" value={item.delivered}
+                                                                                min="0"
+                                                                                onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                                                                                onChange={(e) => updateItem(item.id, 'delivered', e.target.value.replace(/-/g, ''))}
+                                                                                className={`Zirak-DC-qty-input-premium ${parseFloat(item.delivered) > parseFloat(item.ordered) ? 'error' : 'success'}`} />
+                                                                        </td>
+                                                                        {getInvoiceLabel('showUom') !== false && (
+                                                                            <td className="text-center">
+                                                                                <span className="text-sm Zirak-DC-font-extrabold Zirak-DC-text-slate-600">{item.unit || 'pcs'}</span>
+                                                                            </td>
+                                                                        )}
+                                                                        <td className="text-center">
+                                                                            <button
+                                                                                type="button"
+                                                                                className="Zirak-DC-btn-delete-row"
+                                                                                onClick={() => removeItem(item.id)}
+                                                                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                                                                                disabled={items.length <= 1}
+                                                                            >
+                                                                                <Trash2 size={16} />
+                                                                            </button>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr className="Zirak-DC-description-row">
+                                                                        <td colSpan={4 + (getInvoiceLabel('showWarehouse') !== false ? 1 : 0) + (getInvoiceLabel('showUom') !== false ? 1 : 0)}>
+                                                                            <input
+                                                                                type="text"
+                                                                                className="Zirak-DC-description-input-minimal"
+                                                                                placeholder="Item description..."
+                                                                                value={item.description || ''}
+                                                                                onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                                                            />
+                                                                        </td>
+                                                                    </tr>
+                                                                </React.Fragment>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
-                                            </div>
-                                        </div>
 
-                                        <div className="Zirak-DC-meta-fields-col">
-                                            <div className="Zirak-DC-meta-row">
-                                                <label>Challan No.</label>
-                                                <input
-                                                    type="text"
-                                                    value={challanMeta.challanNo || ''}
-                                                    onChange={(e) => setChallanMeta({ ...challanMeta, challanNo: e.target.value })}
-                                                    disabled={isViewMode || !!editId}
-                                                    className={`Zirak-DC-meta-input ${isViewMode || editId ? 'Zirak-DC-disabled' : ''}`}
-                                                />
+                                            {/* Footer Sections */}
+                                            <div className="Zirak-DC-form-footer-grid mt-6">
+                                                <div className="Zirak-DC-notes-col">
+                                                    <label className="Zirak-DC-section-label-premium">Transport / Logistics Note</label>
+                                                    <textarea className="Zirak-DC-notes-area-premium Zirak-DC-h-32"
+                                                        value={challanMeta.transportNote}
+                                                        onChange={(e) => setChallanMeta({ ...challanMeta, transportNote: e.target.value })}
+                                                        placeholder="Driver contact, Courier name, Airway bill no..."></textarea>
+                                                </div>
+                                                <div className="Zirak-DC-notes-col">
+                                                    <label className="Zirak-DC-section-label-premium">Delivery Remarks</label>
+                                                    <textarea className="Zirak-DC-notes-area-premium Zirak-DC-h-32"
+                                                        value={challanMeta.remarks}
+                                                        onChange={(e) => setChallanMeta({ ...challanMeta, remarks: e.target.value })}
+                                                        placeholder="Add any specific instructions or remarks..."></textarea>
+                                                </div>
                                             </div>
-                                            <div className="Zirak-DC-meta-row">
-                                                <label>Manual Ref</label>
-                                                <input type="text" placeholder="e.g. DC-MAN-01"
-                                                    value={challanMeta.manualNo} onChange={(e) => setChallanMeta({ ...challanMeta, manualNo: e.target.value })}
-                                                    className="Zirak-DC-meta-input" />
-                                            </div>
-                                            <div className="Zirak-DC-meta-row">
-                                                <label>Date</label>
-                                                <input type="date"
-                                                    value={challanMeta.date} onChange={(e) => setChallanMeta({ ...challanMeta, date: e.target.value })}
-                                                    className="Zirak-DC-meta-input" />
-                                            </div>
-                                            <div className="Zirak-DC-meta-row">
-                                                <label>Vehicle No</label>
-                                                <input type="text"
-                                                    value={challanMeta.vehicleNo} onChange={(e) => setChallanMeta({ ...challanMeta, vehicleNo: e.target.value })}
-                                                    className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999' />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="Zirak-DC-customer-selection-area">
-                                        <label className="Zirak-DC-form-label-sm font-bold Zirak-DC-text-slate-700">Customer</label>
-                                        <select
-                                            className="Zirak-DC-purchase-module-select-large"
-                                            style={{ flex: 1, width: 'auto' }}
-                                            value={customerId}
-                                            disabled={selectedOrder}
-                                            onChange={(e) => {
-                                                const cId = parseInt(e.target.value);
-                                                setCustomerId(cId);
-                                                const c = customers.find(cust => cust.id === cId);
-                                                if (c) {
-                                                    setCustomerDetails({
-                                                        address: c.shippingAddress || c.billingAddress || '',
-                                                        email: c.email || '',
-                                                        phone: c.phone || '',
-                                                        city: c.shippingCity || c.billingCity || '',
-                                                        state: c.shippingState || c.billingState || '',
-                                                        zipCode: c.shippingZipCode || c.billingZipCode || ''
-                                                    });
-                                                    setBillingDetails({
-                                                        address: c.billingAddress || '',
-                                                        city: c.billingCity || '',
-                                                        state: c.billingState || '',
-                                                        zipCode: c.billingZipCode || ''
-                                                    });
-                                                }
-                                            }}>
-                                            <option value="">Select Customer...</option>
-                                            {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    <div className="Zirak-DC-address-double-grid">
-                                        <div className="Zirak-DC-address-col">
-                                            <h3><MapPin size={16} color="var(--primary)" /> Billing Address</h3>
-                                            <div className="Zirak-DC-readonly-address-box">
-                                                <p className="font-bold Zirak-DC-text-slate-800">
-                                                    {customers.find(c => c.id === parseInt(customerId))?.name || 'Customer'}
-                                                </p>
-                                                {billingDetails.address
-                                                    ? <p style={{ marginTop: '4px' }}>{billingDetails.address}</p>
-                                                    : !customerId && <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Select a customer to see billing details</p>
-                                                }
-                                                {(billingDetails.city || billingDetails.state || billingDetails.zipCode) && (
-                                                    <p>{[billingDetails.city, billingDetails.state, billingDetails.zipCode].filter(Boolean).join(', ')}</p>
-                                                )}
-                                                {(() => {
-                                                    const cust = customers.find(c => c.id === parseInt(customerId));
-                                                    return (<>
-                                                        {cust?.phone && <p style={{ marginTop: '6px', color: '#059669', fontWeight: '600' }}>{cust.phone}</p>}
-                                                        {cust?.email && <p style={{ color: '#0284c7' }}>{cust.email}</p>}
-                                                    </>);
-                                                })()}
-                                            </div>
-                                        </div>
-                                        <div className="Zirak-DC-address-col">
-                                            <h3><Truck size={16} color="var(--primary)" /> Delivery Destination</h3>
-                                            <div className="Zirak-DC-readonly-address-box" style={{ borderColor: '#d1fae5', background: 'linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%)' }}>
-                                                <p className="font-bold Zirak-DC-text-slate-800">
-                                                    {customers.find(c => c.id === parseInt(customerId))?.name || 'Customer'}
-                                                </p>
-                                                {customerDetails.address && <p style={{ marginTop: '4px' }}>{customerDetails.address}</p>}
-                                                {(customerDetails.city || customerDetails.state || customerDetails.zipCode) && (
-                                                    <p>{[customerDetails.city, customerDetails.state, customerDetails.zipCode].filter(Boolean).join(', ')}</p>
-                                                )}
-                                                {customerDetails.phone && (
-                                                    <p style={{ marginTop: '6px', color: '#059669', fontWeight: '600' }}>{customerDetails.phone}</p>
-                                                )}
-                                                {customerDetails.email && (
-                                                    <p style={{ color: '#0284c7' }}>{customerDetails.email}</p>
-                                                )}
-                                                {!customerId && (
-                                                    <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Select a customer to see delivery details</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Custom Fields Section */}
-                                    {getCustomFieldsForType('deliverychallan').length > 0 && (
-                                        <div className="DeliveryChallan-custom-fields-section" style={{ margin: '20px 0', padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                            <h4 style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#334155', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                                Custom Fields
-                                            </h4>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '15px' }}>
-                                                {getCustomFieldsForType('deliverychallan').map(field => (
-                                                    <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                        <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', textAlign: 'left' }}>
-                                                            {field.label} {field.required && <span style={{ color: '#ef4444' }}>*</span>}
-                                                        </label>
-                                                        {field.type === 'select' ? (
-                                                            <select
-                                                                value={customFieldValues[field.label] || ''}
-                                                                onChange={(e) => setCustomFieldValues(prev => ({ ...prev, [field.label]: e.target.value }))}
-                                                                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%', backgroundColor: 'white' }}
-                                                                required={field.required}
-                                                            >
-                                                                <option value="">Select...</option>
-                                                                {(field.options || '').split(',').map(opt => opt.trim()).filter(Boolean).map(opt => (
-                                                                    <option key={opt} value={opt}>{opt}</option>
-                                                                ))}
-                                                            </select>
-                                                        ) : (
-                                                            <input
-                                                                type="text"
-                                                                placeholder={`Enter ${field.label}`}
-                                                                value={customFieldValues[field.label] || ''}
-                                                                onChange={(e) => setCustomFieldValues(prev => ({ ...prev, [field.label]: e.target.value }))}
-                                                                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%' }}
-                                                                required={field.required}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
+                                        </>
                                     )}
-
-                                    {/* Items Section */}
-                                    <div className="Zirak-DC-section-header-flex mt-4 mb-3">
-                                        <h3 className="text-lg font-bold flex items-center gap-2">
-                                            <PackageCheck size={20} color="var(--primary)" /> Delivery Items
-                                        </h3>
-                                        <button className="Zirak-DC-btn-add-row-mini" onClick={addItem}>
-                                            <Plus size={14} /> Add Product
-                                        </button>
-                                    </div>
-
-                                    <div className="Zirak-DC-items-section-new">
-                                        <div className="Zirak-DC-table-responsive">
-                                            <table className="Zirak-DC-new-items-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th style={{ width: '30%' }}>{getTableHeader('item', 'Product').toUpperCase()}</th>
-                                                        {getInvoiceLabel('showWarehouse') !== false && <th style={{ width: '20%' }}>{getTableHeader('warehouse', 'WH / Location').toUpperCase()}</th>}
-                                                        <th style={{ width: '15%', textAlign: 'center' }}>ORDERED</th>
-                                                        <th style={{ width: '15%', textAlign: 'center' }}>DELIVERY QTY</th>
-                                                        {getInvoiceLabel('showUom') !== false && <th style={{ width: '10%', textAlign: 'center' }}>{getTableHeader('uom', 'Unit').toUpperCase()}</th>}
-                                                        <th style={{ width: '10%', textAlign: 'center' }}>ACTION</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {items.map(item => (
-                                                        <React.Fragment key={item.id}>
-                                                            <tr className="Zirak-DC-main-item-row Zirak-DC-hover:bg-slate-50">
-                                                                <td>
-                                                                    <select className="Zirak-DC-full-width-input font-bold"
-                                                                        value={Number(item.productId) || ''}
-                                                                        onChange={(e) => {
-                                                                            const pId = Number(e.target.value);
-                                                                            const product = allProducts.find(p => p.id === pId);
-                                                                            updateItem(item.id, 'productId', pId);
-                                                                            if (product) {
-                                                                                updateItem(item.id, 'unit', product.uom?.unitName || product.salesUom?.unitName || product.unit || 'pcs');
-                                                                                if (!item.description) updateItem(item.id, 'description', product.name);
-                                                                            }
-                                                                        }}>
-                                                                        <option value="">Select Product...</option>
-                                                                        {allProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.totalQuantity ?? 0})</option>)}
-                                                                    </select>
-                                                                </td>
-                                                                {getInvoiceLabel('showWarehouse') !== false && (
-                                                                    <td>
-                                                                        <select className="Zirak-DC-full-width-input"
-                                                                            value={item.warehouseId || ''}
-                                                                            onChange={(e) => updateItem(item.id, 'warehouseId', e.target.value)}>
-                                                                            <option value="">Select Warehouse...</option>
-                                                                            {allWarehouses.map(w => {
-                                                                                const prod = allProducts.find(p => p.id === Number(item.productId));
-                                                                                const stockItem = prod?.stock?.find(s => Number(s.warehouseId) === Number(w.id));
-                                                                                const count = stockItem ? stockItem.quantity : 0;
-                                                                                return <option key={w.id} value={w.id}>{w.name} ({count})</option>;
-                                                                            })}
-                                                                        </select>
-                                                                    </td>
-                                                                )}
-                                                                <td className="text-center">
-                                                                    <input type="number"
-                                                                        className="Zirak-DC-qty-input-premium"
-                                                                        value={item.ordered}
-                                                                        onChange={(e) => updateItem(item.id, 'ordered', e.target.value)}
-                                                                    />
-                                                                </td>
-                                                                <td className="text-center">
-                                                                    <input type="number" value={item.delivered}
-                                                                        onChange={(e) => updateItem(item.id, 'delivered', e.target.value)}
-                                                                        className={`Zirak-DC-qty-input-premium ${parseFloat(item.delivered) > parseFloat(item.ordered) ? 'error' : 'success'}`} />
-                                                                </td>
-                                                                {getInvoiceLabel('showUom') !== false && (
-                                                                    <td className="text-center">
-                                                                        <span className="text-sm Zirak-DC-font-extrabold Zirak-DC-text-slate-600">{item.unit || 'pcs'}</span>
-                                                                    </td>
-                                                                )}
-                                                                <td className="text-center">
-                                                                    <button
-                                                                        type="button"
-                                                                        className="Zirak-DC-btn-delete-row"
-                                                                        onClick={() => removeItem(item.id)}
-                                                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                                                                        disabled={items.length <= 1}
-                                                                    >
-                                                                        <Trash2 size={16} />
-                                                                    </button>
-                                                                </td>
-                                                            </tr>
-                                                            <tr className="Zirak-DC-description-row">
-                                                                <td colSpan={4 + (getInvoiceLabel('showWarehouse') !== false ? 1 : 0) + (getInvoiceLabel('showUom') !== false ? 1 : 0)}>
-                                                                    <input
-                                                                        type="text"
-                                                                        className="Zirak-DC-description-input-minimal"
-                                                                        placeholder="Item description..."
-                                                                        value={item.description || ''}
-                                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                                    />
-                                                                </td>
-                                                            </tr>
-                                                        </React.Fragment>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    {/* Footer Sections */}
-                                    <div className="Zirak-DC-form-footer-grid mt-6">
-                                        <div className="Zirak-DC-notes-col">
-                                            <label className="Zirak-DC-section-label-premium">Transport / Logistics Note</label>
-                                            <textarea className="Zirak-DC-notes-area-premium Zirak-DC-h-32"
-                                                value={challanMeta.transportNote}
-                                                onChange={(e) => setChallanMeta({ ...challanMeta, transportNote: e.target.value })}
-                                                placeholder="Driver contact, Courier name, Airway bill no..."></textarea>
-                                        </div>
-                                        <div className="Zirak-DC-notes-col">
-                                            <label className="Zirak-DC-section-label-premium">Delivery Remarks</label>
-                                            <textarea className="Zirak-DC-notes-area-premium Zirak-DC-h-32"
-                                                value={challanMeta.remarks}
-                                                onChange={(e) => setChallanMeta({ ...challanMeta, remarks: e.target.value })}
-                                                placeholder="Add any specific instructions or remarks..."></textarea>
-                                        </div>
-                                    </div>
-                                </>
-                                )}
                                 </>
                             )}
 
@@ -1496,6 +1840,696 @@ const DeliveryChallan = () => {
                                 <Trash2 size={18} /> Delete
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Add New Customer Modal */}
+            {showAddCustomerModal && (
+                <div className="Customers-modal-overlay" style={{ zIndex: 20000 }}>
+                    <div className="Customers-modal-content" style={{ textAlign: 'left' }}>
+                        <div className="Customers-modal-header">
+                            <h2 className="Customers-modal-title">Add New Customer</h2>
+                            <button className="Customers-close-btn" onClick={() => setShowAddCustomerModal(false)}>×</button>
+                        </div>
+                        <form onSubmit={handleCustomerSubmit}>
+                            <div className="Customers-modal-body">
+                                <div className="Customers-form-section">
+                                    <h3>Basic Information</h3>
+                                    <div className="Customers-form-row">
+                                        <div className="Customers-form-group Customers-half-width">
+                                            <label className="Customers-form-label">Full Name <span className="Customers-text-red">*</span></label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="name"
+                                                value={customerFormData.name}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Full Name"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-half-width">
+                                            <label className="Customers-form-label">Company Name</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="company"
+                                                value={customerFormData.company}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Company Name"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="Customers-form-row">
+                                        <div className="Customers-form-group Customers-half-width">
+                                            <label className="Customers-form-label">Email Address</label>
+                                            <input
+                                                type="email"
+                                                className="Customers-form-input"
+                                                name="email"
+                                                value={customerFormData.email}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Email Address"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-half-width">
+                                            <label className="Customers-form-label">Phone <span className="Customers-text-red">*</span></label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="phone"
+                                                value={customerFormData.phone}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Phone"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="Customers-form-row">
+                                        <div className="Customers-form-group Customers-half-width">
+                                            <label className="Customers-form-label">GSTIN</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="gstin"
+                                                value={customerFormData.gstin}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter GSTIN"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-half-width">
+                                            <label className="Customers-form-label">Account Balance</label>
+                                            <input
+                                                type="number"
+                                                className="Customers-form-input"
+                                                name="accountBalance"
+                                                value={customerFormData.accountBalance}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="0.00"
+                                                min="0"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                        e.preventDefault();
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-section">
+                                    <h3>Billing Address</h3>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Street Address</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="billingAddress"
+                                            value={customerFormData.billingAddress}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Street address"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-row">
+                                        <div className="Customers-form-group Customers-third-width">
+                                            <label className="Customers-form-label">City</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingCity"
+                                                value={customerFormData.billingCity}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="City"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-third-width">
+                                            <label className="Customers-form-label">State</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingState"
+                                                value={customerFormData.billingState}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="State"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-third-width">
+                                            <label className="Customers-form-label">Zip Code</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingZip"
+                                                value={customerFormData.billingZip}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Zip code"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-section">
+                                    <h3>Shipping Address</h3>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Street Address</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="shippingAddress"
+                                            value={customerFormData.shippingAddress}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Street address"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-row">
+                                        <div className="Customers-form-group Customers-third-width">
+                                            <label className="Customers-form-label">City</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="shippingCity"
+                                                value={customerFormData.shippingCity}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="City"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-third-width">
+                                            <label className="Customers-form-label">State</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="shippingState"
+                                                value={customerFormData.shippingState}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="State"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group Customers-third-width">
+                                            <label className="Customers-form-label">Zip Code</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="shippingZip"
+                                                value={customerFormData.shippingZip}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Zip code"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="Customers-modal-footer">
+                                <button type="button" className="Customers-btn-cancel" onClick={() => setShowAddCustomerModal(false)}>Cancel</button>
+                                <button type="submit" className="Customers-btn-submit" disabled={uploadingAnyFile}>Save Customer</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New Product Modal */}
+            {showAddProductModal && (
+                <div className="Zirak-Inventory-modal-overlay" style={{ zIndex: 20000 }}>
+                    <div className="Zirak-Inventory-modal-content" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-Inventory-modal-header">
+                            <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
+                            <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleFullProductSubmit}>
+                            <div className="Zirak-Inventory-modal-body">
+                                <div className="Zirak-Inventory-form-grid">
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Name *</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="name"
+                                            placeholder="Enter item name"
+                                            value={productFormData.name}
+                                            onChange={handleProductInputChange}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">HSN</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="hsn"
+                                            placeholder="Enter HSN code"
+                                            value={productFormData.hsn}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Barcode</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="barcode"
+                                            placeholder="Enter barcode"
+                                            value={productFormData.barcode}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Image</label>
+                                        <div className="Zirak-Inventory-file-input-wrapper">
+                                            <label className="Zirak-Inventory-file-input-label">
+                                                {uploadingImage ? (
+                                                    <>
+                                                        <Loader2 size={16} className="Zirak-Inventory-animate-spin" style={{ display: 'inline-block', marginRight: '6px' }} />
+                                                        <span>Uploading...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Upload size={16} style={{ display: 'inline-block', marginRight: '6px' }} />
+                                                        <span>Choose File</span>
+                                                    </>
+                                                )}
+                                                <input
+                                                    type="file"
+                                                    className="Zirak-Inventory-hidden-file-input"
+                                                    onChange={handleProductImageChange}
+                                                    accept="image/*"
+                                                    disabled={uploadingImage}
+                                                />
+                                            </label>
+                                            <span className="Zirak-Inventory-file-name">
+                                                {productFormData.image ? (
+                                                    <a href={productFormData.image} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                                                        View Image
+                                                    </a>
+                                                ) : 'No file chosen'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Category (Optional)</label>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="categoryId" className="Zirak-Inventory-form-input"
+                                                value={productFormData.categoryId} onChange={handleProductInputChange}
+                                            >
+                                                <option value="">Select Category</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowCategoryModal(true)}><Plus size={16} /></button>
+                                        </div>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Base Unit (Tracking Unit)*</label>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="uomId" className="Zirak-Inventory-form-input"
+                                                value={productFormData.uomId} onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setProductFormData(prev => ({
+                                                        ...prev,
+                                                        uomId: val,
+                                                        purchaseUomId: val,
+                                                        salesUomId: val
+                                                    }));
+                                                }}
+                                                required
+                                            >
+                                                <option value="">Select Base UOM</option>
+                                                {allUoms.filter(u => u.uomType === 'Simple').map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.category})</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowUomModal(true)}>
+                                                <Plus size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Purchase Unit</label>
+                                        <select
+                                            name="purchaseUomId" className="Zirak-Inventory-form-input"
+                                            value={productFormData.purchaseUomId} onChange={handleProductInputChange}
+                                            disabled={!productFormData.uomId}
+                                        >
+                                            <option value="">Select Purchase UOM</option>
+                                            {productFormData.uomId && (() => {
+                                                const base = allUoms.find(u => u.id === parseInt(productFormData.uomId));
+                                                if (!base) return null;
+                                                return allUoms.filter(u => u.category === base.category).map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.uomType})</option>
+                                                ));
+                                            })()}
+                                        </select>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Sales Unit</label>
+                                        <select
+                                            name="salesUomId" className="Zirak-Inventory-form-input"
+                                            value={productFormData.salesUomId} onChange={handleProductInputChange}
+                                            disabled={!productFormData.uomId}
+                                        >
+                                            <option value="">Select Sales UOM</option>
+                                            {productFormData.uomId && (() => {
+                                                const base = allUoms.find(u => u.id === parseInt(productFormData.uomId));
+                                                if (!base) return null;
+                                                return allUoms.filter(u => u.category === base.category).map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.uomType})</option>
+                                                ));
+                                            })()}
+                                        </select>
+                                    </div>
+
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">SKU *</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="sku"
+                                            placeholder="Enter SKU"
+                                            value={productFormData.sku}
+                                            onChange={handleProductInputChange}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
+                                    <label className="Zirak-Inventory-form-label">Description</label>
+                                    <textarea
+                                        className="Zirak-Inventory-form-textarea"
+                                        name="description"
+                                        placeholder="Enter item description"
+                                        value={productFormData.description}
+                                        onChange={handleProductInputChange}
+                                        rows="2"
+                                    />
+                                </div>
+
+                                <div className="Zirak-Inventory-form-grid" style={{ marginTop: '15px' }}>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">As of Date</label>
+                                        <input
+                                            type="date"
+                                            className="Zirak-Inventory-form-input"
+                                            name="asOfDate"
+                                            value={productFormData.asOfDate}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Tax Account</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="taxAccount"
+                                            placeholder="e.g. GST 18%"
+                                            value={productFormData.taxAccount}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Initial Cost Price</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="initialCost"
+                                            step="0.01"
+                                            value={productFormData.initialCost}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Sale Price</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="salePrice"
+                                            step="0.01"
+                                            value={productFormData.salePrice}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Purchase Price</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="purchasePrice"
+                                            step="0.01"
+                                            value={productFormData.purchasePrice}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Discount (%)</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="discount"
+                                            value={productFormData.discount}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
+                                    <label className="Zirak-Inventory-form-label">Remarks</label>
+                                    <textarea
+                                        className="Zirak-Inventory-form-textarea"
+                                        name="remarks"
+                                        placeholder="Enter remarks"
+                                        value={productFormData.remarks}
+                                        onChange={handleProductInputChange}
+                                        rows="2"
+                                    />
+                                </div>
+
+                                <div style={{ marginTop: '20px', borderTop: '1px solid #f3f4f6', paddingTop: '15px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                        <h3 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Warehouse Information</h3>
+                                        <button type="button" className="Zirak-Inventory-btn-add-warehouse" onClick={addProductWarehouseRow}>
+                                            + Add Warehouse
+                                        </button>
+                                    </div>
+                                    <table className="Zirak-Inventory-warehouse-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Warehouse</th>
+                                                <th>Quantity</th>
+                                                <th>Min Order Qty</th>
+                                                <th>Initial Qty</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            {allWarehouses.map(w => (
+                                                                <option key={w.id} value={w.id}>{w.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.quantity}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.minOrderQty}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.initialQty}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-delete-row" onClick={() => removeProductWarehouseRow(row.id)}>
+                                                            Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div className="Zirak-Inventory-modal-footer">
+                                <button type="button" className="Zirak-Inventory-btn-cancel" onClick={() => setShowAddProductModal(false)}>Cancel</button>
+                                <button type="submit" className="Zirak-Inventory-btn-submit" disabled={uploadingImage}>Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New Category Modal */}
+            {showCategoryModal && (
+                <div className="Zirak-Inventory-modal-overlay Zirak-Inventory-sub-modal" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-category-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-Inventory-modal-header">
+                            <h2 className="Zirak-Inventory-modal-title">Add New Category</h2>
+                            <button className="Zirak-Inventory-close-btn" onClick={() => setShowCategoryModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="Zirak-Inventory-modal-body">
+                            <div className="Zirak-Inventory-form-group">
+                                <label className="Zirak-Inventory-form-label">Category Name</label>
+                                <input
+                                    type="text"
+                                    className="Zirak-Inventory-form-input"
+                                    placeholder="Enter new category name"
+                                    value={newCategoryName}
+                                    onChange={(e) => setNewCategoryName(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="Zirak-Inventory-modal-footer">
+                            <button className="Zirak-Inventory-btn-cancel" onClick={() => setShowCategoryModal(false)}>Cancel</button>
+                            <button className="Zirak-Inventory-btn-submit" onClick={handleProductAddCategorySubmit}>Add</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New UOM Modal */}
+            {showUomModal && (
+                <div className="Zirak-UOM-modal-overlay" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-UOM-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-UOM-modal-header">
+                            <h2>Unit Details</h2>
+                            <button className="Zirak-UOM-close-btn" onClick={() => setShowUomModal(false)}><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleUomSubmit}>
+                            <div className="Zirak-UOM-modal-body">
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Measurement Category*</label>
+                                    <input
+                                        list="category-suggestions"
+                                        name="category"
+                                        placeholder="Select or type category"
+                                        value={uomFormData.category}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-input"
+                                    />
+                                    <datalist id="category-suggestions">
+                                        {measurementCategories.map(cat => (
+                                            <option key={cat} value={cat} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>UOM Type*</label>
+                                    <select
+                                        name="uomType"
+                                        value={uomFormData.uomType}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-select"
+                                    >
+                                        <option value="Simple">Simple (Single Standalone Unit)</option>
+                                        <option value="Compound">Compound (Pack of Simple Unit)</option>
+                                    </select>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Unit of Measurement (UOM)*</label>
+                                    <div className="Zirak-UOM-input-with-button">
+                                        <input
+                                            list="unit-suggestions"
+                                            name="unitName"
+                                            placeholder="Select or type UOM"
+                                            value={uomFormData.unitName}
+                                            onChange={handleUomInputChange}
+                                            required
+                                            className="Zirak-UOM-form-input"
+                                        />
+                                        <datalist id="unit-suggestions">
+                                            {uomFormData.category && unitsByCategory[uomFormData.category] && unitsByCategory[uomFormData.category].map(unit => (
+                                                <option key={unit} value={unit} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                {uomFormData.uomType === 'Compound' && (
+                                    <>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Base Unit* (Simple Unit to convert to)</label>
+                                            <select
+                                                name="baseUnitId"
+                                                value={uomFormData.baseUnitId}
+                                                onChange={handleUomInputChange}
+                                                required
+                                                className="Zirak-UOM-form-select"
+                                            >
+                                                <option value="">-- Select Base Unit --</option>
+                                                {getUniqueCategories().map(cat => {
+                                                    const unitsInCat = getAvailableBaseUnitsForCategory(cat);
+                                                    if (unitsInCat.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={cat} label={cat}>
+                                                            {unitsInCat.map(u => (
+                                                                <option key={u.id} value={u.id}>
+                                                                    {u.unitName} {u.isStandard ? ' - Standard' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })}
+                                            </select>
+                                        </div>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Conversion Rate* (Multiplier)</label>
+                                            <div className="UOM-compound-formula-preview">
+                                                <span>1 {uomFormData.unitName || 'Compound Unit'} = </span>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    name="conversionRate"
+                                                    placeholder="Multiplier e.g. 24"
+                                                    value={uomFormData.conversionRate}
+                                                    onChange={handleUomInputChange}
+                                                    required
+                                                    min="0.0001"
+                                                    style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
+                                                />
+                                                <span> {
+                                                    isNaN(uomFormData.baseUnitId)
+                                                        ? uomFormData.baseUnitId
+                                                        : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
+                                                }</span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="Zirak-UOM-modal-footer">
+                                <button type="button" className="Zirak-UOM-footer-close-btn" onClick={() => setShowUomModal(false)}>Close</button>
+                                <button type="submit" className="Zirak-UOM-save-btn">Save</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

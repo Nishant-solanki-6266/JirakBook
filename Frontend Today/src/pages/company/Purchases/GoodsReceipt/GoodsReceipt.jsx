@@ -20,7 +20,15 @@ import companyService from '../../../../api/companyService';
 import GetCompanyId from '../../../../api/GetCompanyId';
 import { CompanyContext } from '../../../../context/CompanyContext';
 import { BASE_URL } from '../../../../api/axiosInstance';
-import '../../Sales/Invoice/Invoice.css';
+import '../../Vendors/Vendors.css';
+import '../../Inventory/ProductInventory/Inventory.css';
+import '../../Inventory/UOM/UOM.css';
+import productServiceFromServices from '../../../../services/productService';
+import categoryService from '../../../../services/categoryService';
+import uomService from '../../../../services/uomService';
+import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
+import axiosInstance from '../../../../api/axiosInstance';
+import { Upload, Loader2 } from 'lucide-react';
 
 const GoodsReceipt = () => {
     const { hasPermission } = useContext(AuthContext);
@@ -57,6 +65,51 @@ const GoodsReceipt = () => {
 
     // Modal & Wizard State
     const [showAddModal, setShowAddModal] = useState(false);
+
+    // Inline Modals States
+    const [showAddVendorModal, setShowAddVendorModal] = useState(false);
+    const [vendorFormData, setVendorFormData] = useState({
+        name: '', nameArabic: '', companyName: '', companyLocation: '',
+        billingName: '', billingPhone: '', billingAddress: '', billingCity: '', billingState: '', billingCountry: '', billingZipCode: '',
+        shippingSameAsBilling: true,
+        shippingAddresses: [],
+        accountType: 'Credit', balanceType: 'Credit', accountBalance: '', creationDate: new Date().toISOString().split('T')[0],
+        bankAccountNumber: '', bankIFSC: '', bankNameBranch: '',
+        primaryContactName: '', email: '', phone: '', alternativePhone: '', designation: '', website: '', gstin: '', profileImage: '', anyFile: '', remarks: ''
+    });
+    const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
+    const [uploadingAnyFile, setUploadingAnyFile] = useState(false);
+    const profileImageRef = useRef();
+    const anyFileRef = useRef();
+
+    const [showAddProductModal, setShowAddProductModal] = useState(false);
+    const [productFormData, setProductFormData] = useState({
+        name: '', sku: '', hsn: '', barcode: '', categoryId: '',
+        uomId: '', purchaseUomId: '', salesUomId: '', unit: '', description: '', asOfDate: new Date().toISOString().split('T')[0],
+        taxAccount: '', initialCost: 0, salePrice: 0, purchasePrice: 0,
+        discount: 0, remarks: '', image: null
+    });
+    const [productWarehouseRows, setProductWarehouseRows] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [allUoms, setAllUoms] = useState([]);
+
+    // UOM Modal States
+    const [showUomModal, setShowUomModal] = useState(false);
+    const [uomFormData, setUomFormData] = useState({
+        category: '', unitName: '', weightPerUnit: '', uomType: 'Simple', baseUnitId: '', conversionRate: ''
+    });
+    const measurementCategories = ['Weight', 'Area', 'Volume', 'Length', 'Count'];
+    const unitsByCategory = {
+        'Weight': ['Microgram', 'Milligram', 'Gram', 'Kilogram (KG)', 'Metric Ton (Tonne)', 'Quintal', 'Pound (lb)', 'Ounce (oz)', 'Stone', 'Carat'],
+        'Area': ['Square Millimeter', 'Square Centimeter', 'Square Meter', 'Square Kilometer', 'Square Inch', 'Square Foot', 'Square Yard', 'Acre', 'Hectare', 'Bigha', 'Kanal', 'Cent'],
+        'Volume': ['Millilitre (mL)', 'Litre (L)', 'Cubic Centimeter (cc)', 'Cubic Meter', 'Cubic Inch', 'Cubic Foot', 'Gallon', 'Barrel', 'Pint', 'Quart', 'Fluid Ounce'],
+        'Length': ['Nanometer', 'Micrometer', 'Millimeter', 'Centimeter', 'Meter', 'Kilometer', 'Inch', 'Foot', 'Yard', 'Mile'],
+        'Count': ['Piece', 'Unit', 'Dozen', 'Pair', 'Set', 'Box', 'Packet', 'Carton', 'Bundle', 'Roll', 'Strip', 'Bottle', 'Bag', 'Can', 'Jar', 'Tube']
+    };
+
     const [step, setStep] = useState(1); // 1: Select Order, 2: Challan Details
     const [editingId, setEditingId] = useState(null);
     const [isViewMode, setIsViewMode] = useState(false);
@@ -158,11 +211,12 @@ const GoodsReceipt = () => {
     const fetchInitialData = async () => {
         try {
             const companyId = GetCompanyId();
-            const [vendorRes, productRes, warehouseRes, orderRes] = await Promise.all([
+            const [vendorRes, productRes, warehouseRes, orderRes, uomRes] = await Promise.all([
                 vendorService.getAllVendors(companyId),
                 productService.getProducts(companyId),
                 warehouseService.getWarehouses(companyId),
-                purchaseOrderService.getOrders(companyId)
+                purchaseOrderService.getOrders(companyId),
+                uomService.getUOMs(companyId)
             ]);
 
             // Vendors
@@ -180,6 +234,10 @@ const GoodsReceipt = () => {
             else if (Array.isArray(warehouseRes)) setWarehouses(warehouseRes);
             else if (warehouseRes.data && Array.isArray(warehouseRes.data)) setWarehouses(warehouseRes.data);
 
+            // UOMs
+            if (uomRes?.success) setAllUoms(uomRes.data || []);
+            else if (uomRes?.data) setAllUoms(uomRes.data);
+
             // Orders - filter out those that already have GRNs
             if (orderRes.success) {
                 setPendingOrders(orderRes.data.filter(o => o.status !== 'COMPLETED' && (!o.grns || o.grns.length === 0)));
@@ -187,6 +245,301 @@ const GoodsReceipt = () => {
         } catch (error) {
             console.error("Error fetching dropdowns", error);
             toast.error("Failed to load dropdown data");
+        }
+    };
+
+    useEffect(() => {
+        if (showAddProductModal) {
+            const companyId = GetCompanyId();
+            categoryService.getCategories(companyId).then(res => {
+                if (res.success) setCategories(res.data);
+            });
+        }
+    }, [showAddProductModal]);
+
+    // Inline Vendor Handlers
+    const handleVendorInputChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        let val = type === 'checkbox' ? checked : value;
+        if ((name === 'phone' || name === 'billingPhone' || name === 'alternativePhone') && typeof value === 'string') {
+            val = value.replace(/\D/g, '');
+        }
+        setVendorFormData(prev => {
+            const newData = { ...prev, [name]: val };
+            if (name === 'billingAddress' && prev.shippingSameAsBilling) {
+                newData.shippingAddress = val;
+            }
+            if (prev.shippingSameAsBilling && name.startsWith('billing')) {
+                const shippingField = name.replace('billing', 'shipping');
+                newData[shippingField] = val;
+            }
+            if (name === 'shippingSameAsBilling' && val) {
+                newData.shippingAddress = prev.billingAddress;
+                newData.shippingCity = prev.billingCity;
+                newData.shippingState = prev.billingState;
+                newData.shippingCountry = prev.billingCountry;
+                newData.shippingZipCode = prev.billingZipCode;
+            }
+            return newData;
+        });
+    };
+
+    const handleVendorShippingAddressChange = (index, field, value) => {
+        setVendorFormData(prev => {
+            const newAddresses = [...prev.shippingAddresses];
+            let processedValue = value;
+            if (field === 'phone' && typeof value === 'string') {
+                processedValue = value.replace(/\D/g, '');
+            }
+            newAddresses[index] = { ...newAddresses[index], [field]: processedValue };
+            return { ...prev, shippingAddresses: newAddresses };
+        });
+    };
+
+    const addVendorShippingAddress = () => {
+        setVendorFormData(prev => ({
+            ...prev,
+            shippingAddresses: [
+                ...prev.shippingAddresses,
+                { name: '', phone: '', address: '', city: '', state: '', country: '', zipCode: '', isDefault: false }
+            ]
+        }));
+    };
+
+    const removeVendorShippingAddress = (index) => {
+        setVendorFormData(prev => ({
+            ...prev,
+            shippingAddresses: prev.shippingAddresses.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleVendorFileUpload = async (file, field, folder) => {
+        if (!file) return;
+        const setUploading = field === 'profileImage' ? setUploadingProfileImage : setUploadingAnyFile;
+        setUploading(true);
+        try {
+            const url = await uploadToCloudinary(file);
+            setVendorFormData(prev => ({ ...prev, [field]: url }));
+            toast.success(`${field === 'profileImage' ? 'Profile image' : 'File'} uploaded!`);
+        } catch (err) {
+            toast.error('Upload failed: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleFullVendorSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!vendorFormData.name || !vendorFormData.email) {
+            toast.error('Please fill in required fields (Name and Email)');
+            return;
+        }
+
+        const payload = { ...vendorFormData };
+        let shippingAddresses = [...vendorFormData.shippingAddresses];
+
+        if (vendorFormData.shippingSameAsBilling) {
+            const billingAsShipping = {
+                name: vendorFormData.billingName || vendorFormData.name,
+                phone: vendorFormData.billingPhone || vendorFormData.phone,
+                address: vendorFormData.billingAddress,
+                city: vendorFormData.billingCity,
+                state: vendorFormData.billingState,
+                country: vendorFormData.billingCountry,
+                zipCode: vendorFormData.billingZipCode,
+                isDefault: true
+            };
+            shippingAddresses = [billingAsShipping, ...vendorFormData.shippingAddresses];
+        }
+
+        payload.shippingAddresses = shippingAddresses;
+        payload.companyId = parseInt(GetCompanyId());
+
+        try {
+            const res = await vendorService.createVendor(payload);
+            toast.success('Vendor created successfully!');
+            setShowAddVendorModal(false);
+            
+            // Refresh vendors list
+            const companyId = GetCompanyId();
+            const vendRes = await vendorService.getAllVendors(companyId);
+            if (vendRes?.success && Array.isArray(vendRes.data)) {
+                setVendors(vendRes.data);
+            } else if (Array.isArray(vendRes)) {
+                setVendors(vendRes);
+            } else if (vendRes?.data && Array.isArray(vendRes.data)) {
+                setVendors(vendRes.data);
+            }
+
+            const added = res?.data || res;
+            if (added && added.id) {
+                setVendorId(added.id.toString());
+            }
+            
+            // Reset vendor form
+            setVendorFormData({
+                name: '', nameArabic: '', companyName: '', companyLocation: '',
+                billingName: '', billingPhone: '', billingAddress: '', billingCity: '', billingState: '', billingCountry: '', billingZipCode: '',
+                shippingSameAsBilling: true,
+                shippingAddresses: [],
+                accountType: 'Credit', balanceType: 'Credit', accountBalance: '', creationDate: new Date().toISOString().split('T')[0],
+                bankAccountNumber: '', bankIFSC: '', bankNameBranch: '',
+                primaryContactName: '', email: '', phone: '', alternativePhone: '', designation: '', website: '', gstin: '', profileImage: '', anyFile: '', remarks: ''
+            });
+        } catch (err) {
+            toast.error(err.response?.data?.message || 'Failed to create vendor');
+        }
+    };
+
+    // Inline Product Handlers
+    const handleProductInputChange = (e) => {
+        const { name, value } = e.target;
+        setProductFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const addProductWarehouseRow = () => {
+        const firstWhId = warehouses.length > 0 ? warehouses[0].id : '';
+        setProductWarehouseRows([...productWarehouseRows, {
+            id: Date.now(),
+            warehouseId: firstWhId,
+            quantity: 0,
+            minOrderQty: 0,
+            initialQty: 0
+        }]);
+    };
+
+    const removeProductWarehouseRow = (id) => {
+        setProductWarehouseRows(productWarehouseRows.filter(row => row.id !== id));
+    };
+
+    const handleProductWhRowChange = (id, field, value) => {
+        setProductWarehouseRows(productWarehouseRows.map(row =>
+            row.id === id ? { ...row, [field]: value } : row
+        ));
+    };
+
+    const handleProductImageChange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            try {
+                setUploadingImage(true);
+                toast.loading('Uploading image...', { id: 'prod-image-upload' });
+                const imageUrl = await uploadToCloudinary(file);
+                setProductFormData(prev => ({ ...prev, image: imageUrl }));
+                toast.success('Image uploaded successfully', { id: 'prod-image-upload' });
+            } catch (error) {
+                console.error(error);
+                toast.error('Failed to upload image', { id: 'prod-image-upload' });
+            } finally {
+                setUploadingImage(false);
+            }
+        }
+    };
+
+    const handleProductAddCategorySubmit = async () => {
+        if (!newCategoryName.trim()) return toast.error('Category name is required');
+        try {
+            const companyId = GetCompanyId();
+            const res = await categoryService.createCategory({ name: newCategoryName, companyId });
+            if (res.success) {
+                toast.success('Category added');
+                setShowCategoryModal(false);
+                setNewCategoryName('');
+                const catRes = await categoryService.getCategories(companyId);
+                if (catRes.success) setCategories(catRes.data);
+            }
+        } catch (error) {
+            toast.error(error.response?.data?.message || 'Failed to add category');
+        }
+    };
+
+    const getUniqueCategories = () => {
+        return [...new Set(allUoms.map(u => u.category))];
+    };
+
+    const getAvailableBaseUnitsForCategory = (category) => {
+        return allUoms.filter(u => u.category === category && u.uomType === 'Simple');
+    };
+
+    const handleUomInputChange = (e) => {
+        const { name, value } = e.target;
+        setUomFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleUomSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                category: uomFormData.category,
+                unitName: uomFormData.unitName,
+                weightPerUnit: uomFormData.weightPerUnit,
+                uomType: uomFormData.uomType,
+                baseUnitId: uomFormData.uomType === 'Compound' && uomFormData.baseUnitId 
+                    ? (isNaN(uomFormData.baseUnitId) ? uomFormData.baseUnitId : parseInt(uomFormData.baseUnitId)) 
+                    : null,
+                conversionRate: uomFormData.uomType === 'Compound' && uomFormData.conversionRate ? parseFloat(uomFormData.conversionRate) : null,
+                companyId: parseInt(companyId)
+            };
+
+            const res = await uomService.createUOM(payload);
+            if (res.success) {
+                toast.success('Unit added successfully');
+                const uomsRes = await uomService.getUOMs(companyId);
+                if (uomsRes.success) {
+                    setAllUoms(uomsRes.data || []);
+                }
+                setProductFormData(prev => ({
+                    ...prev,
+                    uomId: res.data?.id || prev.uomId,
+                    purchaseUomId: res.data?.id || prev.purchaseUomId,
+                    salesUomId: res.data?.id || prev.salesUomId
+                }));
+                setShowUomModal(false);
+                setUomFormData({
+                    category: '', unitName: '', weightPerUnit: '', uomType: 'Simple', baseUnitId: '', conversionRate: ''
+                });
+            }
+        } catch (error) {
+            console.error('Error saving UOM:', error);
+            toast.error(error.response?.data?.message || 'Failed to save UOM');
+        }
+    };
+
+    const handleFullProductSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!productFormData.name) {
+            toast.error('Item Name is required');
+            return;
+        }
+        try {
+            const companyId = GetCompanyId();
+            const payload = {
+                ...productFormData,
+                companyId: parseInt(companyId),
+                warehouseInfo: productWarehouseRows.map(row => ({
+                    warehouseId: parseInt(row.warehouseId),
+                    quantity: parseFloat(row.quantity) || 0,
+                    minOrderQty: parseFloat(row.minOrderQty) || 0,
+                    initialQty: parseFloat(row.initialQty) || 0
+                }))
+            };
+            await productServiceFromServices.createProduct(payload);
+            toast.success('Product created successfully!');
+            setShowAddProductModal(false);
+            
+            // Refresh products
+            const prodRes = await productService.getProducts(companyId);
+            if (prodRes?.success && Array.isArray(prodRes.data)) {
+                setProducts(prodRes.data);
+            } else if (prodRes?.data) {
+                setProducts(prodRes.data);
+            } else if (Array.isArray(prodRes)) {
+                setProducts(prodRes);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.message || 'Failed to create product');
         }
     };
 
@@ -478,15 +831,6 @@ const GoodsReceipt = () => {
                     });
                     setItems(mappedItems);
                 }
-                
-                if (grn.purchaseOrderId && grn.purchaseorder) {
-                    setSelectedOrder(grn.purchaseorder);
-                } else if (grn.purchaseOrderId) {
-                    setSelectedOrder({ id: grn.purchaseOrderId });
-                } else {
-                    setSelectedOrder(null);
-                }
-
                 let fieldValues = {};
                 if (grn.customFields) {
                     try {
@@ -584,7 +928,7 @@ const GoodsReceipt = () => {
         const payload = {
             companyId,
             grnNumber: grnMeta.grnNumber || `GRN-${Date.now()}`, // Temporary fallback if auto-gen not in backend
-            purchaseOrderId: selectedOrder ? selectedOrder.id : (editingId ? undefined : null),
+            purchaseOrderId: selectedOrder ? selectedOrder.id : null,
             vendorId: parseInt(vendorId),
             date: grnMeta.date,
             customFields: JSON.stringify(customFieldValues),
@@ -1167,19 +1511,66 @@ const GoodsReceipt = () => {
                                             {/* Address Card */}
                                             <div className="grn-card grn-grid-2">
                                                 <div>
-                                                    <div className="grn-section-title"><User size={14} /> Vendor & Billing Info</div>
+                                                    <div className="grn-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span className="flex items-center gap-1"><User size={14} /> Vendor & Billing Info</span>
+                                                        {!isViewMode && !selectedOrder && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowAddVendorModal(true)}
+                                                                style={{
+                                                                    backgroundColor: '#22c55e',
+                                                                    color: '#ffffff',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '2px 8px',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 'bold',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}
+                                                            >
+                                                                <Plus size={12} /> Add Vendor
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     <div className="grn-vendor-row-container">
-                                                        {selectedVendor ? (
-                                                            <div className="grn-vendor-single-line">
-                                                                <div><span className="grn-label-strong">Name:</span>{selectedVendor.name}</div>
-                                                                <span className="grn-separator">|</span>
-                                                                <div><span className="grn-label-strong">Address:</span>{selectedVendor.address || selectedVendor.billingAddress || 'N/A'}</div>
-                                                                <span className="grn-separator">|</span>
-                                                                <div><span className="grn-label-strong">Phone:</span>{selectedVendor.phone || 'N/A'}</div>
-                                                                <span className="grn-separator">|</span>
-                                                                <div><span className="grn-label-strong">Email:</span>{selectedVendor.email || 'N/A'}</div>
+                                                        {selectedOrder ? (
+                                                            selectedVendor ? (
+                                                                <div className="grn-vendor-single-line">
+                                                                    <div><span className="grn-label-strong">Name:</span>{selectedVendor.name}</div>
+                                                                    <span className="grn-separator">|</span>
+                                                                    <div><span className="grn-label-strong">Address:</span>{selectedVendor.address || selectedVendor.billingAddress || 'N/A'}</div>
+                                                                    <span className="grn-separator">|</span>
+                                                                    <div><span className="grn-label-strong">Phone:</span>{selectedVendor.phone || 'N/A'}</div>
+                                                                    <span className="grn-separator">|</span>
+                                                                    <div><span className="grn-label-strong">Email:</span>{selectedVendor.email || 'N/A'}</div>
+                                                                </div>
+                                                            ) : <div className="text-gray-400 italic">No vendor selected</div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                <select
+                                                                    className="grn-table-select"
+                                                                    value={vendorId}
+                                                                    onChange={(e) => setVendorId(e.target.value)}
+                                                                    disabled={isViewMode}
+                                                                    style={{ width: '100%', maxWidth: '300px' }}
+                                                                >
+                                                                    <option value="">Select Vendor...</option>
+                                                                    {vendors.map(v => (
+                                                                        <option key={v.id} value={v.id}>{v.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                                {selectedVendor && (
+                                                                    <div className="grn-vendor-single-line" style={{ marginTop: '8px' }}>
+                                                                        <div><span className="grn-label-strong">Address:</span>{selectedVendor.address || selectedVendor.billingAddress || 'N/A'}</div>
+                                                                        <span className="grn-separator">|</span>
+                                                                        <div><span className="grn-label-strong">Phone:</span>{selectedVendor.phone || 'N/A'}</div>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        ) : <div className="text-gray-400 italic">No vendor selected</div>}
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div>
@@ -1283,7 +1674,9 @@ const GoodsReceipt = () => {
                                                                 {getInvoiceLabel('showQty') !== false && (
                                                                     <td>
                                                                         <input type="number" className="grn-table-input qty-highlight" disabled={isViewMode}
-                                                                            value={item.receivedQty} onChange={e => updateItem(item.id, 'receivedQty', e.target.value)} />
+                                                                            min="0"
+                                                                            onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                                                                            value={item.receivedQty} onChange={e => updateItem(item.id, 'receivedQty', e.target.value.replace(/-/g, ''))} />
                                                                     </td>
                                                                 )}
                                                                 <td>
@@ -1308,10 +1701,31 @@ const GoodsReceipt = () => {
                                                         )}
                                                     </tbody>
                                                 </table>
-                                                <button className="mt-3 text-sm font-semibold text-green-600 flex items-center hover:text-green-700"
-                                                    onClick={addItem}>
-                                                    <Plus size={16} className="mr-1" /> Add Additional Item
-                                                </button>
+                                                <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                                                    <button className="text-sm font-semibold text-green-600 flex items-center hover:text-green-700"
+                                                        onClick={addItem}>
+                                                        <Plus size={16} className="mr-1" /> Add Additional Item
+                                                    </button>
+                                                    {!isViewMode && (
+                                                        <button
+                                                            type="button"
+                                                            className="text-sm font-semibold text-green-600 flex items-center hover:text-green-700"
+                                                            onClick={() => {
+                                                                setProductWarehouseRows(warehouses.map(wh => ({
+                                                                    id: wh.id,
+                                                                    warehouseId: wh.id,
+                                                                    quantity: 0,
+                                                                    minOrderQty: 0,
+                                                                    initialQty: 0
+                                                                })));
+                                                                setShowAddProductModal(true);
+                                                            }}
+                                                            style={{ color: '#22c55e' }}
+                                                        >
+                                                            <Plus size={16} className="mr-1" /> Add Product
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Footer Notes */}
@@ -1391,6 +1805,660 @@ const GoodsReceipt = () => {
                                 <Trash2 size={18} /> Delete
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+            {/* Add New Vendor Modal */}
+            {showAddVendorModal && (
+                <div className="Vendors-modal-overlay" style={{ zIndex: 20000 }}>
+                    <div className="Vendors-modal-content Vendors-modal-large" style={{ textAlign: 'left' }}>
+                        <div className="Vendors-modal-header">
+                            <h2 className="Vendors-modal-title">Add Vendor</h2>
+                            <button className="Vendors-close-btn" onClick={() => setShowAddVendorModal(false)}>×</button>
+                        </div>
+                        <form onSubmit={handleFullVendorSubmit}>
+                            <div className="Vendors-modal-body">
+                                {/* Basic Information */}
+                                <div className="Vendors-form-section" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+                                    <h3 className="Vendors-section-subtitle">Basic Information</h3>
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Name (English) <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="name"
+                                                value={vendorFormData.name}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Name"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Name (Arabic)</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="nameArabic"
+                                                value={vendorFormData.nameArabic}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Name (Arabic)"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Company Name</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="companyName"
+                                                value={vendorFormData.companyName}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter company name"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-google-loc">
+                                            <label className="Vendors-form-label">Company Google Location</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="companyLocation"
+                                                value={vendorFormData.companyLocation}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Google Maps link"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Address Information */}
+                                <div className="Vendors-form-section">
+                                    <h3 className="Vendors-section-subtitle">Billing Address</h3>
+                                    <div className="Vendors-form-row Vendors-three-col">
+                                        <div className="Vendors-form-group" style={{ flex: '2 1 0%' }}>
+                                            <label className="Vendors-form-label">Address Street / Area</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="billingAddress"
+                                                value={vendorFormData.billingAddress}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Street address"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">City</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="billingCity"
+                                                value={vendorFormData.billingCity}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="City"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="Vendors-form-row Vendors-three-col">
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">State</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="billingState"
+                                                value={vendorFormData.billingState}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="State"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Country</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="billingCountry"
+                                                value={vendorFormData.billingCountry}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Country"
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group">
+                                            <label className="Vendors-form-label">Zip Code</label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="billingZipCode"
+                                                value={vendorFormData.billingZipCode}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Zip code"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Contact Info */}
+                                <div className="Vendors-form-section">
+                                    <h3 className="Vendors-section-subtitle">Contact Info</h3>
+                                    <div className="Vendors-form-row Vendors-mixed-col">
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Email Address <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="email"
+                                                className="Vendors-form-input"
+                                                name="email"
+                                                value={vendorFormData.email}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Email Address"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="Vendors-form-group Vendors-half-width">
+                                            <label className="Vendors-form-label">Phone <span className="Vendors-text-red">*</span></label>
+                                            <input
+                                                type="text"
+                                                className="Vendors-form-input"
+                                                name="phone"
+                                                value={vendorFormData.phone}
+                                                onChange={handleVendorInputChange}
+                                                placeholder="Enter Phone"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="Vendors-modal-footer">
+                                <button type="button" className="Vendors-btn-cancel" onClick={() => setShowAddVendorModal(false)}>Cancel</button>
+                                <button type="submit" className="Vendors-btn-submit" disabled={uploadingAnyFile || uploadingProfileImage}>Save Vendor</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New Product Modal */}
+            {showAddProductModal && (
+                <div className="Zirak-Inventory-modal-overlay" style={{ zIndex: 20000 }}>
+                    <div className="Zirak-Inventory-modal-content" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-Inventory-modal-header">
+                            <h2 className="Zirak-Inventory-modal-title">Add Product</h2>
+                            <button className="Zirak-Inventory-close-btn" onClick={() => setShowAddProductModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <form onSubmit={handleFullProductSubmit}>
+                            <div className="Zirak-Inventory-modal-body">
+                                <div className="Zirak-Inventory-form-grid">
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Name *</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="name"
+                                            placeholder="Enter item name"
+                                            value={productFormData.name}
+                                            onChange={handleProductInputChange}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">HSN</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="hsn"
+                                            placeholder="Enter HSN code"
+                                            value={productFormData.hsn}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Barcode</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="barcode"
+                                            placeholder="Enter barcode"
+                                            value={productFormData.barcode}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Image</label>
+                                        <div className="Zirak-Inventory-file-input-wrapper">
+                                            <label className="Zirak-Inventory-file-input-label">
+                                                {uploadingImage ? (
+                                                    <>
+                                                        <Loader2 size={16} className="Zirak-Inventory-animate-spin" style={{ display: 'inline-block', marginRight: '6px' }} />
+                                                        <span>Uploading...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Upload size={16} style={{ display: 'inline-block', marginRight: '6px' }} />
+                                                        <span>Choose File</span>
+                                                    </>
+                                                )}
+                                                <input
+                                                    type="file"
+                                                    className="Zirak-Inventory-hidden-file-input"
+                                                    onChange={handleProductImageChange}
+                                                    accept="image/*"
+                                                    disabled={uploadingImage}
+                                                />
+                                            </label>
+                                            <span className="Zirak-Inventory-file-name">
+                                                {productFormData.image ? (
+                                                    <a href={productFormData.image} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                                                        View Image
+                                                    </a>
+                                                ) : 'No file chosen'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Item Category (Optional)</label>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="categoryId" className="Zirak-Inventory-form-input"
+                                                value={productFormData.categoryId} onChange={handleProductInputChange}
+                                            >
+                                                <option value="">Select Category</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowCategoryModal(true)}><Plus size={16} /></button>
+                                        </div>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Base Unit (Tracking Unit)*</label>
+                                        <div className="Zirak-Inventory-input-with-action">
+                                            <select
+                                                name="uomId" className="Zirak-Inventory-form-input"
+                                                value={productFormData.uomId} onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setProductFormData(prev => ({
+                                                        ...prev,
+                                                        uomId: val,
+                                                        purchaseUomId: val,
+                                                        salesUomId: val
+                                                    }));
+                                                }}
+                                                required
+                                            >
+                                                <option value="">Select Base UOM</option>
+                                                {allUoms.filter(u => u.uomType === 'Simple').map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.category})</option>
+                                                ))}
+                                            </select>
+                                            <button type="button" className="Zirak-Inventory-btn-inline-add" onClick={() => setShowUomModal(true)}>
+                                                <Plus size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Purchase Unit</label>
+                                        <select
+                                            name="purchaseUomId" className="Zirak-Inventory-form-input"
+                                            value={productFormData.purchaseUomId} onChange={handleProductInputChange}
+                                            disabled={!productFormData.uomId}
+                                        >
+                                            <option value="">Select Purchase UOM</option>
+                                            {productFormData.uomId && (() => {
+                                                const base = allUoms.find(u => u.id === parseInt(productFormData.uomId));
+                                                if (!base) return null;
+                                                return allUoms.filter(u => u.category === base.category).map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.uomType})</option>
+                                                ));
+                                            })()}
+                                        </select>
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Default Sales Unit</label>
+                                        <select
+                                            name="salesUomId" className="Zirak-Inventory-form-input"
+                                            value={productFormData.salesUomId} onChange={handleProductInputChange}
+                                            disabled={!productFormData.uomId}
+                                        >
+                                            <option value="">Select Sales UOM</option>
+                                            {productFormData.uomId && (() => {
+                                                const base = allUoms.find(u => u.id === parseInt(productFormData.uomId));
+                                                if (!base) return null;
+                                                return allUoms.filter(u => u.category === base.category).map(uom => (
+                                                    <option key={uom.id} value={uom.id}>{uom.unitName} ({uom.uomType})</option>
+                                                ));
+                                            })()}
+                                        </select>
+                                    </div>
+
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">SKU *</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="sku"
+                                            placeholder="Enter SKU"
+                                            value={productFormData.sku}
+                                            onChange={handleProductInputChange}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
+                                    <label className="Zirak-Inventory-form-label">Description</label>
+                                    <textarea
+                                        className="Zirak-Inventory-form-textarea"
+                                        name="description"
+                                        placeholder="Enter item description"
+                                        value={productFormData.description}
+                                        onChange={handleProductInputChange}
+                                        rows="2"
+                                    />
+                                </div>
+
+                                <div className="Zirak-Inventory-form-grid" style={{ marginTop: '15px' }}>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">As of Date</label>
+                                        <input
+                                            type="date"
+                                            className="Zirak-Inventory-form-input"
+                                            name="asOfDate"
+                                            value={productFormData.asOfDate}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Tax Account</label>
+                                        <input
+                                            type="text"
+                                            className="Zirak-Inventory-form-input"
+                                            name="taxAccount"
+                                            placeholder="e.g. GST 18%"
+                                            value={productFormData.taxAccount}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Initial Cost Price</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="initialCost"
+                                            step="0.01"
+                                            value={productFormData.initialCost}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Sale Price</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="salePrice"
+                                            step="0.01"
+                                            value={productFormData.salePrice}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Purchase Price</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="purchasePrice"
+                                            step="0.01"
+                                            value={productFormData.purchasePrice}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                    <div className="Zirak-Inventory-form-group">
+                                        <label className="Zirak-Inventory-form-label">Discount (%)</label>
+                                        <input
+                                            type="number"
+                                            className="Zirak-Inventory-form-input"
+                                            name="discount"
+                                            value={productFormData.discount}
+                                            onChange={handleProductInputChange}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Zirak-Inventory-form-group" style={{ marginTop: '15px' }}>
+                                    <label className="Zirak-Inventory-form-label">Remarks</label>
+                                    <textarea
+                                        className="Zirak-Inventory-form-textarea"
+                                        name="remarks"
+                                        placeholder="Enter remarks"
+                                        value={productFormData.remarks}
+                                        onChange={handleProductInputChange}
+                                        rows="2"
+                                    />
+                                </div>
+
+                                <div style={{ marginTop: '20px', borderTop: '1px solid #f3f4f6', paddingTop: '15px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                        <h3 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Warehouse Information</h3>
+                                        <button type="button" className="Zirak-Inventory-btn-add-warehouse" onClick={addProductWarehouseRow}>
+                                            + Add Warehouse
+                                        </button>
+                                    </div>
+                                    <table className="Zirak-Inventory-warehouse-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Warehouse</th>
+                                                <th>Quantity</th>
+                                                <th>Min Order Qty</th>
+                                                <th>Initial Qty</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {productWarehouseRows.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <select
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.warehouseId}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'warehouseId', e.target.value)}
+                                                        >
+                                                            {warehouses.map(w => (
+                                                                <option key={w.id} value={w.id}>{w.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.quantity}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'quantity', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.minOrderQty}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'minOrderQty', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="number"
+                                                            className="Zirak-Inventory-form-input"
+                                                            value={row.initialQty}
+                                                            onChange={(e) => handleProductWhRowChange(row.id, 'initialQty', e.target.value)}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <button type="button" className="Zirak-Inventory-btn-delete-row" onClick={() => removeProductWarehouseRow(row.id)}>
+                                                            Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div className="Zirak-Inventory-modal-footer">
+                                <button type="button" className="Zirak-Inventory-btn-cancel" onClick={() => setShowAddProductModal(false)}>Cancel</button>
+                                <button type="submit" className="Zirak-Inventory-btn-submit" disabled={uploadingImage}>Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New Category Modal */}
+            {showCategoryModal && (
+                <div className="Zirak-Inventory-modal-overlay Zirak-Inventory-sub-modal" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-Inventory-modal-content Zirak-Inventory-category-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-Inventory-modal-header">
+                            <h2 className="Zirak-Inventory-modal-title">Add New Category</h2>
+                            <button className="Zirak-Inventory-close-btn" onClick={() => setShowCategoryModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="Zirak-Inventory-modal-body">
+                            <div className="Zirak-Inventory-form-group">
+                                <label className="Zirak-Inventory-form-label">Category Name</label>
+                                <input
+                                    type="text"
+                                    className="Zirak-Inventory-form-input"
+                                    placeholder="Enter new category name"
+                                    value={newCategoryName}
+                                    onChange={(e) => setNewCategoryName(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="Zirak-Inventory-modal-footer">
+                            <button className="Zirak-Inventory-btn-cancel" onClick={() => setShowCategoryModal(false)}>Cancel</button>
+                            <button className="Zirak-Inventory-btn-submit" onClick={handleProductAddCategorySubmit}>Add</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add New UOM Modal */}
+            {showUomModal && (
+                <div className="Zirak-UOM-modal-overlay" style={{ zIndex: 100000 }}>
+                    <div className="Zirak-UOM-modal" style={{ textAlign: 'left' }}>
+                        <div className="Zirak-UOM-modal-header">
+                            <h2>Unit Details</h2>
+                            <button className="Zirak-UOM-close-btn" onClick={() => setShowUomModal(false)}><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleUomSubmit}>
+                            <div className="Zirak-UOM-modal-body">
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Measurement Category*</label>
+                                    <input
+                                        list="category-suggestions"
+                                        name="category"
+                                        placeholder="Select or type category"
+                                        value={uomFormData.category}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-input"
+                                    />
+                                    <datalist id="category-suggestions">
+                                        {measurementCategories.map(cat => (
+                                            <option key={cat} value={cat} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>UOM Type*</label>
+                                    <select
+                                        name="uomType"
+                                        value={uomFormData.uomType}
+                                        onChange={handleUomInputChange}
+                                        required
+                                        className="Zirak-UOM-form-select"
+                                    >
+                                        <option value="Simple">Simple (Single Standalone Unit)</option>
+                                        <option value="Compound">Compound (Pack of Simple Unit)</option>
+                                    </select>
+                                </div>
+                                <div className="Zirak-UOM-form-group">
+                                    <label>Unit of Measurement (UOM)*</label>
+                                    <div className="Zirak-UOM-input-with-button">
+                                        <input
+                                            list="unit-suggestions"
+                                            name="unitName"
+                                            placeholder="Select or type UOM"
+                                            value={uomFormData.unitName}
+                                            onChange={handleUomInputChange}
+                                            required
+                                            className="Zirak-UOM-form-input"
+                                        />
+                                        <datalist id="unit-suggestions">
+                                            {uomFormData.category && unitsByCategory[uomFormData.category] && unitsByCategory[uomFormData.category].map(unit => (
+                                                <option key={unit} value={unit} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                {uomFormData.uomType === 'Compound' && (
+                                    <>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Base Unit* (Simple Unit to convert to)</label>
+                                            <select
+                                                name="baseUnitId"
+                                                value={uomFormData.baseUnitId}
+                                                onChange={handleUomInputChange}
+                                                required
+                                                className="Zirak-UOM-form-select"
+                                            >
+                                                <option value="">-- Select Base Unit --</option>
+                                                {getUniqueCategories().map(cat => {
+                                                    const unitsInCat = getAvailableBaseUnitsForCategory(cat);
+                                                    if (unitsInCat.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={cat} label={cat}>
+                                                            {unitsInCat.map(u => (
+                                                                <option key={u.id} value={u.id}>
+                                                                    {u.unitName} {u.isStandard ? ' - Standard' : ''}
+                                                                </option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })}
+                                            </select>
+                                        </div>
+                                        <div className="Zirak-UOM-form-group">
+                                            <label>Conversion Rate* (Multiplier)</label>
+                                            <div className="UOM-compound-formula-preview">
+                                                <span>1 {uomFormData.unitName || 'Compound Unit'} = </span>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    name="conversionRate"
+                                                    placeholder="Multiplier e.g. 24"
+                                                    value={uomFormData.conversionRate}
+                                                    onChange={handleUomInputChange}
+                                                    required
+                                                    min="0.0001"
+                                                    style={{ width: '100px', display: 'inline-block', margin: '0 8px', padding: '6px' }}
+                                                />
+                                                <span> {
+                                                    isNaN(uomFormData.baseUnitId) 
+                                                        ? uomFormData.baseUnitId 
+                                                        : (allUoms.find(u => u.id === parseInt(uomFormData.baseUnitId))?.unitName || 'Base Unit')
+                                                }</span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="Zirak-UOM-modal-footer">
+                                <button type="button" className="Zirak-UOM-footer-close-btn" onClick={() => setShowUomModal(false)}>Close</button>
+                                <button type="submit" className="Zirak-UOM-save-btn">Save</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

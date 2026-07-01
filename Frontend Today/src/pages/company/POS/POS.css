@@ -1565,3 +1565,12 @@
         font-size: 1.125rem;
     }
 }
+
+.companypos-tax-dropdown::-webkit-outer-spin-button,
+.companypos-tax-dropdown::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.companypos-tax-dropdown[type="number"] {
+    -moz-appearance: textfield;
+}
