@@ -35,7 +35,7 @@ import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
 import { Upload, Loader2 } from 'lucide-react';
 
 const Invoice = () => {
-    const { companySettings, formatCurrency, getInvoiceLabel, getTableHeader, getDocumentTitle } = useContext(CompanyContext);
+    const { companySettings, formatCurrency, getInvoiceLabel, getTableHeader, getDocumentTitle, getExchangeRateFor, getSyncRate } = useContext(CompanyContext);
     const { hasPermission } = useContext(AuthContext);
     const location = useLocation();
     const navigate = useNavigate();
@@ -75,6 +75,20 @@ const Invoice = () => {
             setSelectedCurrency(companySettings.currency);
         }
     }, [companySettings]);
+
+    const handleCurrencyChange = async (cur) => {
+        setSelectedCurrency(cur);
+        if (cur === (companySettings?.currency || 'USD')) {
+            setExchangeRate(1.0);
+        } else {
+            try {
+                const rate = await getExchangeRateFor(cur, companySettings?.currency || 'USD');
+                setExchangeRate(rate.toFixed(6));
+            } catch (e) {
+                setExchangeRate(1.0);
+            }
+        }
+    };
 
     const formatDocCurrency = (amount, currencyCode) => {
         const docCurrency = currencyCode || selectedCurrency || companySettings?.currency || 'USD';
@@ -168,6 +182,7 @@ const Invoice = () => {
     // View Request State
     const [viewMode, setViewMode] = useState(false);
     const [selectedInvoice, setSelectedInvoice] = useState(null);
+    const viewRate = getSyncRate(selectedInvoice?.currency || 'USD', companySettings?.currency || 'USD');
     const [invoiceToDelete, setInvoiceToDelete] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [invoiceFilterCustomerId, setInvoiceFilterCustomerId] = useState('');
@@ -241,10 +256,25 @@ const Invoice = () => {
                 setManualStatus(inv.manualStatus || false);
                 setOverrideStatus(inv.status || 'UNPAID');
                 setCustomerShippingAddresses(inv.customer?.shippingaddress || []);
+                let fieldValues = {};
+                if (inv.customFields) {
+                    try {
+                        fieldValues = typeof inv.customFields === 'string'
+                            ? JSON.parse(inv.customFields)
+                            : inv.customFields;
+                    } catch (e) {
+                        console.error('Error parsing custom fields on edit:', e);
+                    }
+                }
+                setCustomFieldValues(fieldValues);
+
                 setInvoiceMeta({
                     manualNo: inv.invoiceNumber,
                     date: new Date(inv.date).toISOString().split('T')[0],
-                    dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : ''
+                    dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : '',
+                    deliveryPersonName: fieldValues.deliveryPersonName || '',
+                    deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
+                    deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
                 });
                 setNotes(inv.notes || '');
                 setSelectedChallan(inv.deliveryChallanId ? { id: inv.deliveryChallanId } : null);
@@ -262,17 +292,6 @@ const Invoice = () => {
                     discount: i.discount,
                     total: i.amount
                 })));
-                let fieldValues = {};
-                if (inv.customFields) {
-                    try {
-                        fieldValues = typeof inv.customFields === 'string'
-                            ? JSON.parse(inv.customFields)
-                            : inv.customFields;
-                    } catch (e) {
-                        console.error('Error parsing custom fields on edit:', e);
-                    }
-                }
-                setCustomFieldValues(fieldValues);
                 setSelectedPhotos(fieldValues?._attachments?.photos || []);
                 setSelectedFiles(fieldValues?._attachments?.files || []);
                 await loadCustomerReceiptsForEdit(inv.customerId, inv.id);
@@ -290,6 +309,9 @@ const Invoice = () => {
             const companyId = GetCompanyId();
             const customFieldsPayload = {
                 ...customFieldValues,
+                deliveryPersonName: invoiceMeta.deliveryPersonName,
+                deliveryPersonMobile: invoiceMeta.deliveryPersonMobile,
+                deliveryPersonEmail: invoiceMeta.deliveryPersonEmail,
                 _attachments: {
                     photos: selectedPhotos,
                     files: selectedFiles
@@ -359,7 +381,8 @@ const Invoice = () => {
         name: 'Zirak Books', address: '123 Business Avenue, Suite 404', email: 'info@zirakbooks.com', phone: '123-456-7890', logo: null, notes: '', terms: '', showQr: true
     });
     const [invoiceMeta, setInvoiceMeta] = useState({
-        manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0]
+        manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0],
+        deliveryPersonName: '', deliveryPersonMobile: '', deliveryPersonEmail: ''
     });
     const [customerId, setCustomerId] = useState('');
     const [selectedCustomerCreditPeriod, setSelectedCustomerCreditPeriod] = useState(0);
@@ -788,7 +811,14 @@ const Invoice = () => {
         setOverallDiscountType('percentage');
         setCustomerShippingAddresses([]);
         setShippingSameAsBilling(true);
-        setInvoiceMeta({ manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0] });
+        setInvoiceMeta({
+            manualNo: '',
+            date: new Date().toISOString().split('T')[0],
+            dueDate: new Date().toISOString().split('T')[0],
+            deliveryPersonName: '',
+            deliveryPersonMobile: '',
+            deliveryPersonEmail: ''
+        });
         let defWarehouseId = '';
         if (companySettings?.inventoryConfig) {
             try {
@@ -1129,6 +1159,9 @@ const Invoice = () => {
             const companyId = GetCompanyId();
             const customFieldsPayload = {
                 ...customFieldValues,
+                deliveryPersonName: invoiceMeta.deliveryPersonName,
+                deliveryPersonMobile: invoiceMeta.deliveryPersonMobile,
+                deliveryPersonEmail: invoiceMeta.deliveryPersonEmail,
                 _attachments: {
                     photos: selectedPhotos,
                     files: selectedFiles
@@ -1599,10 +1632,39 @@ const Invoice = () => {
                                                         <span className="invoice-label">Currency:</span> <span>{selectedInvoice.currency}</span>
                                                     </div>
                                                     <div className="invoice-meta-row">
-                                                        <span className="invoice-label">Ex. Rate:</span> <span>1 {selectedInvoice.currency} = {selectedInvoice.exchangeRate || 1.0} {companySettings?.currency || 'INR'}</span>
+                                                        <span className="invoice-label">Ex. Rate:</span> <span>1 {selectedInvoice.currency} = {Number(viewRate).toFixed(4)} {companySettings?.currency || 'INR'}</span>
                                                     </div>
                                                 </>
                                             )}
+                                            {(() => {
+                                                if (!selectedInvoice?.customFields) return null;
+                                                try {
+                                                    const cf = typeof selectedInvoice.customFields === 'string'
+                                                        ? JSON.parse(selectedInvoice.customFields)
+                                                        : selectedInvoice.customFields;
+                                                    return (
+                                                        <>
+                                                            {cf.deliveryPersonName && (
+                                                                <div className="invoice-meta-row">
+                                                                    <span className="invoice-label">Del. Person:</span> <span>{cf.deliveryPersonName}</span>
+                                                                </div>
+                                                            )}
+                                                            {cf.deliveryPersonMobile && (
+                                                                <div className="invoice-meta-row">
+                                                                    <span className="invoice-label">Del. Mobile:</span> <span>{cf.deliveryPersonMobile}</span>
+                                                                </div>
+                                                            )}
+                                                            {cf.deliveryPersonEmail && (
+                                                                <div className="invoice-meta-row">
+                                                                    <span className="invoice-label">Del. Email:</span> <span>{cf.deliveryPersonEmail}</span>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
+                                                } catch (e) {
+                                                    return null;
+                                                }
+                                            })()}
                                         </div>
                                         {companyDetails.showQr && selectedInvoice?.id && (
                                             <div className="invoice-qr-box" style={{ marginTop: '1rem' }}>
@@ -1728,7 +1790,7 @@ const Invoice = () => {
                                     {getInvoiceLabel('showUom') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('uom', 'UOM').toUpperCase()}</th>}
                                     {getInvoiceLabel('showRate') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('rate', 'RATE').toUpperCase()}</th>}
                                     <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>AMOUNT PAID</th>
-                                    {getInvoiceLabel('showDiscount') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('discount', 'DISCOUNT').toUpperCase()}</th>}
+                                    {false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('discount', 'DISCOUNT').toUpperCase()}</th>}
                                     {getInvoiceLabel('showTax') !== false && <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)' }}>{getTableHeader('tax', 'TAX (%)').toUpperCase()}</th>}
                                     <th style={{ backgroundColor: 'var(--header-bg)', color: 'var(--header-text)', textAlign: 'right' }}>{getTableHeader('price', 'PRICE').toUpperCase()}</th>
                                 </tr>
@@ -1761,19 +1823,53 @@ const Invoice = () => {
                                             {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || (item.warehouseId ? `WH #${item.warehouseId}` : 'Main Warehouse')}</td>}
                                             {getInvoiceLabel('showQty') !== false && <td>{item.quantity}</td>}
                                             {getInvoiceLabel('showUom') !== false && <td>{item.uom?.unitName || (item.uomId ? `UOM #${item.uomId}` : 'pcs')}</td>}
-                                            {getInvoiceLabel('showRate') !== false && <td>{formatDocCurrency(item.rate, selectedInvoice?.currency)}</td>}
+                                            {getInvoiceLabel('showRate') !== false && (
+                                                <td>
+                                                    {formatDocCurrency(item.rate, selectedInvoice?.currency)}
+                                                    {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                            ({formatDocCurrency(item.rate * viewRate, companySettings?.currency || 'USD')})
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            )}
                                             <td>
                                                 {(() => {
                                                     const totalAmount = selectedInvoice.totalAmount || 1;
                                                     const paidAmount = item.docPaidAmount !== undefined ? item.docPaidAmount : (selectedInvoice.paidAmount || 0);
                                                     const itemTotal = item.amount || 0;
                                                     const proportionalPaid = (itemTotal / totalAmount) * paidAmount;
-                                                    return formatDocCurrency(proportionalPaid, selectedInvoice?.currency);
+                                                    return (
+                                                        <>
+                                                            {formatDocCurrency(proportionalPaid, selectedInvoice?.currency)}
+                                                            {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency(proportionalPaid * viewRate, companySettings?.currency || 'USD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
                                                 })()}
                                             </td>
-                                            {getInvoiceLabel('showDiscount') !== false && <td>{formatDocCurrency(item.discount || 0, selectedInvoice?.currency)}</td>}
+                                            {false && (
+                                                <td>
+                                                    {formatDocCurrency(item.discount || 0, selectedInvoice?.currency)}
+                                                    {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                            ({formatDocCurrency((item.discount || 0) * viewRate, companySettings?.currency || 'USD')})
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            )}
                                             {getInvoiceLabel('showTax') !== false && <td>{item.taxRate}%</td>}
-                                            <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatDocCurrency(item.amount, selectedInvoice?.currency)}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: '600' }}>
+                                                {formatDocCurrency(item.amount, selectedInvoice?.currency)}
+                                                {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                        ({formatDocCurrency(item.amount * viewRate, companySettings?.currency || 'USD')})
+                                                    </div>
+                                                )}
+                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -1784,33 +1880,68 @@ const Invoice = () => {
                             <div className="invoice-totals">
                                 <div className="invoice-total-row">
                                     <span>{getInvoiceLabel('subTotal')}</span>
-                                    <span>{formatDocCurrency(Object.values(selectedInvoice?.invoiceitem || selectedInvoice?.items || []).reduce((acc, item) => acc + (item.quantity * item.rate), 0), selectedInvoice?.currency)}</span>
+                                    <span>
+                                        {formatDocCurrency(Object.values(selectedInvoice?.invoiceitem || selectedInvoice?.items || []).reduce((acc, item) => acc + (item.quantity * item.rate), 0), selectedInvoice?.currency)}
+                                        {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                ({formatDocCurrency(Object.values(selectedInvoice?.invoiceitem || selectedInvoice?.items || []).reduce((acc, item) => acc + (item.quantity * item.rate), 0) * viewRate, companySettings?.currency || 'USD')})
+                                            </span>
+                                        )}
+                                    </span>
                                 </div>
                                 {getInvoiceLabel('showTax') !== false && (
                                     <div className="invoice-total-row">
                                         <span>{getInvoiceLabel('tax')}</span>
-                                        <span>{formatDocCurrency(selectedInvoice?.taxAmount || 0, selectedInvoice?.currency)}</span>
+                                        <span>
+                                            {formatDocCurrency(selectedInvoice?.taxAmount || 0, selectedInvoice?.currency)}
+                                            {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                    ({formatDocCurrency((selectedInvoice?.taxAmount || 0) * viewRate, companySettings?.currency || 'USD')})
+                                                </span>
+                                            )}
+                                        </span>
                                     </div>
                                 )}
 
                                 <div className="invoice-final-total">
                                     <span>{getInvoiceLabel('total')}</span>
-                                    <span>{formatDocCurrency(selectedInvoice?.totalAmount || 0, selectedInvoice?.currency)}</span>
+                                    <span>
+                                        {formatDocCurrency(selectedInvoice?.totalAmount || 0, selectedInvoice?.currency)}
+                                        {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                ({formatDocCurrency((selectedInvoice?.totalAmount || 0) * viewRate, companySettings?.currency || 'USD')})
+                                            </span>
+                                        )}
+                                    </span>
                                 </div>
 
                                 <>
                                     <div className="invoice-total-row" style={{ marginTop: '0.8rem', borderTop: '1px solid #edf2f7', paddingTop: '0.8rem' }}>
                                         <span style={{ fontWeight: '600' }}>Amount Paid</span>
-                                        <span style={{ fontWeight: '700', color: '#10b981' }}>{formatDocCurrency(selectedInvoice?.paidAmount || 0, selectedInvoice?.currency)}</span>
+                                        <span>
+                                            <span style={{ fontWeight: '700', color: '#10b981' }}>{formatDocCurrency(selectedInvoice?.paidAmount || 0, selectedInvoice?.currency)}</span>
+                                            {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                    ({formatDocCurrency((selectedInvoice?.paidAmount || 0) * viewRate, companySettings?.currency || 'USD')})
+                                                </span>
+                                            )}
+                                        </span>
                                     </div>
                                     <div className="invoice-total-row">
                                         <span style={{ fontWeight: '600' }}>Balance Due</span>
-                                        <span style={{ fontWeight: '700', color: '#ef4444' }}>{formatDocCurrency(selectedInvoice?.balanceAmount || 0, selectedInvoice?.currency)}</span>
+                                        <span>
+                                            <span style={{ fontWeight: '700', color: '#ef4444' }}>{formatDocCurrency(selectedInvoice?.balanceAmount || 0, selectedInvoice?.currency)}</span>
+                                            {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'USD') && (
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                    ({formatDocCurrency((selectedInvoice?.balanceAmount || 0) * viewRate, companySettings?.currency || 'USD')})
+                                                </span>
+                                            )}
+                                        </span>
                                     </div>
                                     {selectedInvoice?.currency && selectedInvoice?.currency !== (companySettings?.currency || 'INR') && (
                                         <div className="invoice-total-row" style={{ marginTop: '0.8rem', borderTop: '1px dashed #edf2f7', paddingTop: '0.8rem', fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>
                                             <span>Base Total ({companySettings?.currency || 'INR'}):</span>
-                                            <span>{formatDocCurrency((selectedInvoice?.totalAmount || 0) * (selectedInvoice?.exchangeRate || 1.0), companySettings?.currency || 'INR')}</span>
+                                            <span>{formatDocCurrency((selectedInvoice?.totalAmount || 0) * viewRate, companySettings?.currency || 'INR')}</span>
                                         </div>
                                     )}
                                 </>
@@ -2114,16 +2245,27 @@ const Invoice = () => {
                                             isSingle: false
                                         };
                                     }
+                                    const rate = getSyncRate(inv.currency || 'USD', companySettings?.currency || 'USD');
                                     groupedMap[key].invoices.push(inv);
-                                    groupedMap[key].totalInvoiceAmount += inv.totalAmount;
-                                    groupedMap[key].balanceAmount += (inv.balanceAmount || 0);
+                                    groupedMap[key].totalInvoiceAmount += inv.totalAmount * rate;
+                                    groupedMap[key].balanceAmount += (inv.balanceAmount || 0) * rate;
                                     const effectivePaid = inv.paidAmount !== undefined ? inv.paidAmount : (inv.totalAmount - (inv.balanceAmount || 0));
-                                    groupedMap[key].totalPaidAmount += effectivePaid;
+                                    groupedMap[key].totalPaidAmount += effectivePaid * rate;
+
+                                    const curr = inv.currency || companySettings?.currency || 'USD';
+                                    if (!groupedMap[key].currencyTotals) {
+                                        groupedMap[key].currencyTotals = {};
+                                    }
+                                    if (!groupedMap[key].currencyTotals[curr]) {
+                                        groupedMap[key].currencyTotals[curr] = 0;
+                                    }
+                                    groupedMap[key].currencyTotals[curr] += (inv.balanceAmount || 0);
 
                                     if (inv.salesreturn) {
                                         inv.salesreturn.forEach(ret => {
                                             groupedMap[key].returns.push(ret);
-                                            groupedMap[key].totalReturnAmount += ret.totalAmount || 0;
+                                            const retRate = getSyncRate(ret.currency || inv.currency || 'USD', companySettings?.currency || 'USD');
+                                            groupedMap[key].totalReturnAmount += (ret.totalAmount || 0) * retRate;
                                         });
                                     }
 
@@ -2162,15 +2304,46 @@ const Invoice = () => {
                                             <td>{new Date(group.earliestDate).toLocaleDateString()}</td>
                                             <td> {group.latestDueDate ? new Date(group.latestDueDate).toLocaleDateString() : 'N/A'}</td>
                                             <td className="font-bold">
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <span>{formatCurrency(group.balanceAmount)}</span>
-                                                    {group.totalReturnAmount > 0 && (
-                                                        <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                                                            Return Impact: -{formatCurrency(group.totalReturnAmount)}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
+                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                     {(() => {
+                                                         const currs = Object.keys(group.currencyTotals || {});
+                                                         const baseCurr = companySettings?.currency || 'USD';
+                                                         if (currs.length === 1) {
+                                                             const curr = currs[0];
+                                                             const originalAmount = group.currencyTotals[curr];
+                                                             if (curr !== baseCurr) {
+                                                                 return (
+                                                                     <span>
+                                                                         {formatDocCurrency(originalAmount, curr)} 
+                                                                         <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#64748b', marginLeft: '6px' }}>
+                                                                             ({formatDocCurrency(group.balanceAmount, baseCurr)})
+                                                                         </span>
+                                                                     </span>
+                                                                 );
+                                                             }
+                                                         } else if (currs.length > 1) {
+                                                             return (
+                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                     {currs.map(curr => (
+                                                                         <span key={curr} style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                                             {formatDocCurrency(group.currencyTotals[curr], curr)}
+                                                                         </span>
+                                                                     ))}
+                                                                     <span style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '2px', marginTop: '2px' }}>
+                                                                         Total: {formatDocCurrency(group.balanceAmount, baseCurr)}
+                                                                     </span>
+                                                                 </div>
+                                                             );
+                                                         }
+                                                         return <span>{formatCurrency(group.balanceAmount)}</span>;
+                                                     })()}
+                                                     {group.totalReturnAmount > 0 && (
+                                                         <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                                                             Return Impact: -{formatCurrency(group.totalReturnAmount)}
+                                                         </span>
+                                                     )}
+                                                 </div>
+                                             </td>
                                             <td>
                                                 {(() => {
                                                     let statusVal = 'Combined';
@@ -2304,8 +2477,22 @@ const Invoice = () => {
                                                                             </td>
                                                                             <td className="font-bold">{si.invoiceNumber}</td>
                                                                             <td>{new Date(si.date).toLocaleDateString()}</td>
-                                                                            <td>{formatDocCurrency(si.totalAmount, si.currency)}</td>
-                                                                            <td className="font-bold">{formatDocCurrency(si.balanceAmount, si.currency)}</td>
+                                                                            <td>
+                                                                                {formatDocCurrency(si.totalAmount, si.currency)}
+                                                                                {si.currency && si.currency !== (companySettings?.currency || 'USD') && (
+                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                        ({formatDocCurrency(si.totalAmount * (si.exchangeRate || 1.0), companySettings?.currency || 'USD')})
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
+                                                                            <td className="font-bold">
+                                                                                {formatDocCurrency(si.balanceAmount, si.currency)}
+                                                                                {si.currency && si.currency !== (companySettings?.currency || 'USD') && (
+                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                        ({formatDocCurrency(si.balanceAmount * (si.exchangeRate || 1.0), companySettings?.currency || 'USD')})
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
                                                                             <td>
                                                                                 <select
                                                                                     value={si.manualStatus ? si.status : 'AUTO'}
@@ -2441,13 +2628,7 @@ const Invoice = () => {
                                     <label>Currency</label>
                                     <select
                                         value={selectedCurrency}
-                                        onChange={(e) => {
-                                            const cur = e.target.value;
-                                            setSelectedCurrency(cur);
-                                            if (cur === (companySettings?.currency || 'USD')) {
-                                                setExchangeRate(1.0);
-                                            }
-                                        }}
+                                        onChange={(e) => handleCurrencyChange(e.target.value)}
                                         className="Invoice-compact-select"
                                     >
                                         <option value="INR">INR (₹)</option>
@@ -2472,6 +2653,30 @@ const Invoice = () => {
                                             className="Invoice-compact-input" />
                                     </div>
                                 )}
+                                <div className="Invoice-meta-col">
+                                    <label>Del. Person Name</label>
+                                    <input type="text"
+                                        value={invoiceMeta.deliveryPersonName || ''}
+                                        onChange={(e) => setInvoiceMeta({ ...invoiceMeta, deliveryPersonName: e.target.value })}
+                                        placeholder="Enter name"
+                                        className="Invoice-compact-input" />
+                                </div>
+                                <div className="Invoice-meta-col">
+                                    <label>Del. Person Mobile</label>
+                                    <input type="text"
+                                        value={invoiceMeta.deliveryPersonMobile || ''}
+                                        onChange={(e) => setInvoiceMeta({ ...invoiceMeta, deliveryPersonMobile: e.target.value })}
+                                        placeholder="Enter mobile"
+                                        className="Invoice-compact-input" />
+                                </div>
+                                <div className="Invoice-meta-col">
+                                    <label>Del. Person Email</label>
+                                    <input type="text"
+                                        value={invoiceMeta.deliveryPersonEmail || ''}
+                                        onChange={(e) => setInvoiceMeta({ ...invoiceMeta, deliveryPersonEmail: e.target.value })}
+                                        placeholder="Enter email"
+                                        className="Invoice-compact-input" />
+                                </div>
                             </div>
 
                             {/* Customer & Address Grid */}

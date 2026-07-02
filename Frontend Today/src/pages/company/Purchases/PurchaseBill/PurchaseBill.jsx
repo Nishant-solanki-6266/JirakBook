@@ -36,7 +36,7 @@ import chartOfAccountsService from '../../../../services/chartOfAccountsService'
 
 
 const PurchaseBill = () => {
-    const { companySettings, formatCurrency, getTableHeader, getInvoiceLabel, getDocumentTitle } = useContext(CompanyContext);
+    const { companySettings, formatCurrency, getTableHeader, getInvoiceLabel, getDocumentTitle, getExchangeRateFor, getSyncRate } = useContext(CompanyContext);
     const { hasPermission } = useContext(AuthContext);
     const location = useLocation();
     const navigate = useNavigate();
@@ -59,6 +59,20 @@ const PurchaseBill = () => {
             setSelectedCurrency(companySettings.currency);
         }
     }, [companySettings]);
+
+    const handleCurrencyChange = async (cur) => {
+        setSelectedCurrency(cur);
+        if (cur === (companySettings?.currency || 'USD')) {
+            setExchangeRate(1.0);
+        } else {
+            try {
+                const rate = await getExchangeRateFor(cur, companySettings?.currency || 'USD');
+                setExchangeRate(rate.toFixed(6));
+            } catch (e) {
+                setExchangeRate(1.0);
+            }
+        }
+    };
 
     const formatDocCurrency = (amount, currencyCode) => {
         const docCurrency = currencyCode || selectedCurrency || companySettings?.currency || 'USD';
@@ -188,6 +202,7 @@ const PurchaseBill = () => {
     const [editingId, setEditingId] = useState(null);
     const [isViewMode, setIsViewMode] = useState(false);
     const [viewBill, setViewBill] = useState(null);
+    const viewRate = getSyncRate(viewBill?.currency || 'USD', companySettings?.currency || 'KWD');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteId, setDeleteId] = useState(null);
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -210,7 +225,8 @@ const PurchaseBill = () => {
         name: '', address: '', email: '', phone: '', logo: '', notes: '', terms: ''
     });
     const [billMeta, setBillMeta] = useState({
-        manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0]
+        manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0],
+        deliveryPersonName: '', deliveryPersonMobile: '', deliveryPersonEmail: ''
     });
     const [vendorId, setVendorId] = useState('');
     const [selectedVendorCreditPeriod, setSelectedVendorCreditPeriod] = useState(0);
@@ -841,7 +857,14 @@ const PurchaseBill = () => {
         setSelectedVendorCreditPeriod(0);
         setSelectedCurrency(companyDetails.currency || companySettings?.currency || 'USD');
         setExchangeRate(1.0);
-        setBillMeta({ manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0] });
+        setBillMeta({
+            manualNo: '',
+            date: new Date().toISOString().split('T')[0],
+            dueDate: new Date().toISOString().split('T')[0],
+            deliveryPersonName: '',
+            deliveryPersonMobile: '',
+            deliveryPersonEmail: ''
+        });
         let defWarehouseId = '';
         if (companySettings?.inventoryConfig) {
             try {
@@ -1182,10 +1205,25 @@ const PurchaseBill = () => {
                 setVendorId(billToEdit.vendorId);
                 const vendorObj = vendors.find(v => v.id == billToEdit.vendorId);
                 setSelectedVendorCreditPeriod(vendorObj?.creditPeriod || 0);
+                let fieldValues = {};
+                if (billToEdit.customFields) {
+                    try {
+                        fieldValues = typeof billToEdit.customFields === 'string'
+                            ? JSON.parse(billToEdit.customFields)
+                            : billToEdit.customFields;
+                    } catch (e) {
+                        console.error('Error parsing custom fields on edit:', e);
+                    }
+                }
+                setCustomFieldValues(fieldValues);
+
                 setBillMeta({
                     manualNo: billToEdit.billNumber,
                     date: billToEdit.date.split('T')[0],
-                    dueDate: billToEdit.dueDate ? billToEdit.dueDate.split('T')[0] : ''
+                    dueDate: billToEdit.dueDate ? billToEdit.dueDate.split('T')[0] : '',
+                    deliveryPersonName: fieldValues.deliveryPersonName || '',
+                    deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
+                    deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
                 });
                 setNotes(billToEdit.notes || '');
 
@@ -1205,17 +1243,6 @@ const PurchaseBill = () => {
                     }));
                     setItems(mappedItems);
                 }
-                let fieldValues = {};
-                if (billToEdit.customFields) {
-                    try {
-                        fieldValues = typeof billToEdit.customFields === 'string'
-                            ? JSON.parse(billToEdit.customFields)
-                            : billToEdit.customFields;
-                    } catch (e) {
-                        console.error('Error parsing custom fields on edit:', e);
-                    }
-                }
-                setCustomFieldValues(fieldValues);
                 setSelectedPhotos(fieldValues?._attachments?.photos || []);
                 setSelectedFiles(fieldValues?._attachments?.files || []);
                 setOverallDiscount(billToEdit.overallDiscount || 0);
@@ -1655,7 +1682,7 @@ const PurchaseBill = () => {
                                                                 <span className="invoice-label">Currency:</span> {viewBill.currency}
                                                             </div>
                                                             <div className="invoice-meta-row">
-                                                                <span className="invoice-label">Ex. Rate:</span> 1 {viewBill.currency} = {viewBill.exchangeRate || 1.0} {companySettings?.currency || 'INR'}
+                                                                <span className="invoice-label">Ex. Rate:</span> 1 {viewBill.currency} = {Number(viewRate).toFixed(4)} {companySettings?.currency || 'INR'}
                                                             </div>
                                                         </>
                                                     )}
@@ -1759,13 +1786,40 @@ const PurchaseBill = () => {
                                                 {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || 'N/A'}</td>}
                                                 {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
                                                 <td style={{ textAlign: 'right' }}>
-                                                    {iIdx === 0 ? formatCurrency(bill.totalAmount) : ''}
+                                                    {iIdx === 0 ? (
+                                                        <>
+                                                            {formatDocCurrency(bill.totalAmount, bill.currency)}
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency(bill.totalAmount * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : ''}
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
-                                                    {iIdx === 0 ? formatCurrency(bill.totalAmount - bill.balanceAmount) : ''}
+                                                    {iIdx === 0 ? (
+                                                        <>
+                                                            {formatDocCurrency(bill.totalAmount - bill.balanceAmount, bill.currency)}
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency((bill.totalAmount - bill.balanceAmount) * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : ''}
                                                 </td>
                                                 <td style={{ textAlign: 'right', fontWeight: iIdx === 0 ? 600 : 400 }}>
-                                                    {iIdx === 0 ? formatCurrency(bill.balanceAmount) : ''}
+                                                    {iIdx === 0 ? (
+                                                        <>
+                                                            {formatDocCurrency(bill.balanceAmount, bill.currency)}
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency(bill.balanceAmount * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : ''}
                                                 </td>
                                             </tr>
                                         ));
@@ -1797,9 +1851,25 @@ const PurchaseBill = () => {
                                             {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || '-'}</td>}
                                             {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
                                             {getInvoiceLabel('showUom') !== false && <td style={{ textAlign: 'center' }}>{item.uom?.unitName || allUoms.find(u => u.id === item.uomId)?.unitName || ''}</td>}
-                                            {getInvoiceLabel('showRate') !== false && <td style={{ textAlign: 'right' }}>{formatDocCurrency(item.rate, viewBill.currency)}</td>}
+                                            {getInvoiceLabel('showRate') !== false && (
+                                                <td style={{ textAlign: 'right' }}>
+                                                    {formatDocCurrency(item.rate, viewBill.currency)}
+                                                    {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                            ({formatDocCurrency(item.rate * viewRate, companySettings?.currency || 'KWD')})
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            )}
                                             {getInvoiceLabel('showTax') !== false && <td style={{ textAlign: 'right' }}>{item.taxRate}%</td>}
-                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatDocCurrency(item.amount, viewBill.currency)}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                                                {formatDocCurrency(item.amount, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                        ({formatDocCurrency(item.amount * viewRate, companySettings?.currency || 'KWD')})
+                                                    </div>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1811,51 +1881,123 @@ const PurchaseBill = () => {
                             <div className="invoice-totals">
                                 {viewBill.isStatement ? (
                                     <>
-                                        <div className="invoice-total-row">
-                                            <span className="invoice-label">Total Bill Amount:</span>
-                                            <span>{formatCurrency(viewBill.totalBillAmount)}</span>
+                                        <div className="invoice-total-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <span className="invoice-label">Total Bill Amount:</span>
+                                                <span style={{ fontWeight: '600' }}>{formatCurrency(viewBill.totalBillAmount)}</span>
+                                            </div>
+                                            {Object.keys(viewBill.currencyTotals || {}).map(curr => {
+                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                if (curr === baseCurr) return null;
+                                                const originalTotal = viewBill.bills.filter(b => (b.currency || baseCurr) === curr).reduce((sum, b) => sum + b.totalAmount, 0);
+                                                return (
+                                                    <span key={`tot-${curr}`} style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                                        ({formatDocCurrency(originalTotal, curr)})
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="invoice-final-total">
-                                            <span>Total Amount Paid:</span>
-                                            <span style={{ color: '#16a34a' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
+                                        <div className="invoice-final-total" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', borderTop: '1px solid #edf2f7', paddingTop: '8px', marginTop: '4px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <span>Total Amount Paid:</span>
+                                                <span style={{ color: '#16a34a', fontWeight: '700' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
+                                            </div>
+                                            {Object.keys(viewBill.currencyTotals || {}).map(curr => {
+                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                if (curr === baseCurr) return null;
+                                                const originalPaid = viewBill.bills.filter(b => (b.currency || baseCurr) === curr).reduce((sum, b) => sum + (b.totalAmount - b.balanceAmount), 0);
+                                                return (
+                                                    <span key={`paid-${curr}`} style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                                        ({formatDocCurrency(originalPaid, curr)})
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="invoice-final-total" style={{ borderTop: '1px solid #ef4444', marginTop: '5px', paddingTop: '5px', color: '#ef4444' }}>
-                                            <span>Total Balance Due:</span>
-                                            <span>{formatCurrency(viewBill.balanceAmount)}</span>
+                                        <div className="invoice-final-total" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', borderTop: '1px solid #ef4444', marginTop: '6px', paddingTop: '6px', color: '#ef4444' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <span>Total Balance Due:</span>
+                                                <span style={{ fontWeight: '700' }}>{formatCurrency(viewBill.balanceAmount)}</span>
+                                            </div>
+                                            {Object.keys(viewBill.currencyTotals || {}).map(curr => {
+                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                if (curr === baseCurr) return null;
+                                                const originalBalance = viewBill.currencyTotals[curr];
+                                                return (
+                                                    <span key={`bal-${curr}`} style={{ fontSize: '0.8rem', color: '#ef4444' }}>
+                                                        ({formatDocCurrency(originalBalance, curr)})
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                     </>
                                 ) : (
                                     <>
                                         <div className="invoice-total-row">
                                             <span className="invoice-label">{getInvoiceLabel('subTotal')}:</span>
-                                            <span>{formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0)) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row">
                                             <span className="invoice-label">Discount:</span>
-                                            <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
+                                            <span>
+                                                <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        (- {formatDocCurrency((viewBill.discountAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row">
                                             <span className="invoice-label">{getInvoiceLabel('tax')}:</span>
-                                            <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
+                                            <span>
+                                                <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        (+ {formatDocCurrency((viewBill.taxAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-final-total">
                                             <span>{getInvoiceLabel('total')}:</span>
-                                            <span>{formatDocCurrency(viewBill.totalAmount, viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.totalAmount, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.totalAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row" style={{ marginTop: '5px', fontWeight: '600', color: '#16a34a' }}>
                                             <span className="invoice-label">Amount Paid:</span>
-                                            <span>{formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.paidAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row" style={{ borderTop: '1px solid #e2e8f0', marginTop: '5px', paddingTop: '5px', fontWeight: '700', color: '#ef4444' }}>
                                             <span className="invoice-label">Balance Due:</span>
-                                            <span>{formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.balanceAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
-                                        {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
-                                            <div className="invoice-total-row" style={{ borderTop: '1px dashed #cbd5e1', marginTop: '8px', paddingTop: '8px', fontWeight: '700', color: '#475569' }}>
-                                                <span className="invoice-label">Base Total ({companySettings?.currency || 'INR'}):</span>
-                                                <span>{formatDocCurrency((viewBill.totalAmount || 0) * (viewBill.exchangeRate || 1.0), companySettings?.currency || 'INR')}</span>
-                                            </div>
-                                        )}
                                     </>
                                 )}
                             </div>
@@ -2082,14 +2224,25 @@ const PurchaseBill = () => {
                                             latestDueDate: b.dueDate
                                         };
                                     }
+                                    const rate = getSyncRate(b.currency || 'USD', companySettings?.currency || 'KWD');
                                     groupedMap[key].bills.push(b);
-                                    groupedMap[key].totalBillAmount += b.totalAmount;
-                                    groupedMap[key].balanceAmount += b.balanceAmount;
+                                    groupedMap[key].totalBillAmount += b.totalAmount * rate;
+                                    groupedMap[key].balanceAmount += b.balanceAmount * rate;
+
+                                    const curr = b.currency || companySettings?.currency || 'KWD';
+                                    if (!groupedMap[key].currencyTotals) {
+                                        groupedMap[key].currencyTotals = {};
+                                    }
+                                    if (!groupedMap[key].currencyTotals[curr]) {
+                                        groupedMap[key].currencyTotals[curr] = 0;
+                                    }
+                                    groupedMap[key].currencyTotals[curr] += b.balanceAmount;
 
                                     if (b.purchasereturn) {
                                         b.purchasereturn.forEach(ret => {
                                             groupedMap[key].returns.push(ret);
-                                            groupedMap[key].totalReturnAmount += ret.totalAmount || 0;
+                                            const retRate = getSyncRate(ret.currency || b.currency || 'USD', companySettings?.currency || 'KWD');
+                                            groupedMap[key].totalReturnAmount += (ret.totalAmount || 0) * retRate;
                                         });
                                     }
 
@@ -2131,7 +2284,38 @@ const PurchaseBill = () => {
                                             <td> {group.latestDueDate ? new Date(group.latestDueDate).toLocaleDateString() : 'N/A'}</td>
                                             <td className="font-bold">
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <span>{formatCurrency(group.balanceAmount)}</span>
+                                                    {(() => {
+                                                        const currs = Object.keys(group.currencyTotals || {});
+                                                        const baseCurr = companySettings?.currency || 'KWD';
+                                                        if (currs.length === 1) {
+                                                            const curr = currs[0];
+                                                            const originalAmount = group.currencyTotals[curr];
+                                                            if (curr !== baseCurr) {
+                                                                return (
+                                                                    <span>
+                                                                        {formatDocCurrency(originalAmount, curr)} 
+                                                                        <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#64748b', marginLeft: '6px' }}>
+                                                                            ({formatDocCurrency(group.balanceAmount, baseCurr)})
+                                                                        </span>
+                                                                    </span>
+                                                                );
+                                                            }
+                                                        } else if (currs.length > 1) {
+                                                            return (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                    {currs.map(curr => (
+                                                                        <span key={curr} style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                                            {formatDocCurrency(group.currencyTotals[curr], curr)}
+                                                                        </span>
+                                                                    ))}
+                                                                    <span style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '2px', marginTop: '2px' }}>
+                                                                        Total: {formatDocCurrency(group.balanceAmount, baseCurr)}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return <span>{formatCurrency(group.balanceAmount)}</span>;
+                                                    })()}
                                                     {group.totalReturnAmount > 0 && (
                                                         <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '700', whiteSpace: 'nowrap' }}>
                                                             Return Impact: -{formatCurrency(group.totalReturnAmount)}
@@ -2196,8 +2380,22 @@ const PurchaseBill = () => {
                                                                             <td style={{ padding: '10px', fontWeight: 'bold', color: '#64748b' }}>BILL</td>
                                                                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{pb.billNumber}</td>
                                                                             <td style={{ padding: '10px' }}>{new Date(pb.date).toLocaleDateString()}</td>
-                                                                            <td style={{ padding: '10px' }}>{formatDocCurrency(pb.totalAmount, pb.currency)}</td>
-                                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{formatDocCurrency(pb.balanceAmount, pb.currency)}</td>
+                                                                            <td style={{ padding: '10px' }}>
+                                                                                {formatDocCurrency(pb.totalAmount, pb.currency)}
+                                                                                {pb.currency && pb.currency !== (companySettings?.currency || 'KWD') && (
+                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                        ({formatDocCurrency(pb.totalAmount * (pb.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
+                                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>
+                                                                                {formatDocCurrency(pb.balanceAmount, pb.currency)}
+                                                                                {pb.currency && pb.currency !== (companySettings?.currency || 'KWD') && (
+                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                        ({formatDocCurrency(pb.balanceAmount * (pb.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
                                                                             <td style={{ padding: '10px' }}>
                                                                                 <select
                                                                                     value={pb.manualStatus ? pb.status : 'AUTO'}
@@ -2325,13 +2523,7 @@ const PurchaseBill = () => {
                                     <label>Currency</label>
                                     <select
                                         value={selectedCurrency}
-                                        onChange={(e) => {
-                                            const cur = e.target.value;
-                                            setSelectedCurrency(cur);
-                                            if (cur === (companySettings?.currency || 'INR')) {
-                                                setExchangeRate(1.0);
-                                            }
-                                        }}
+                                        onChange={(e) => handleCurrencyChange(e.target.value)}
                                         className="PBILL-compact-select"
                                     >
                                         <option value="INR">INR (₹)</option>

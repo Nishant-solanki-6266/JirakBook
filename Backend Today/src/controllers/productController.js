@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { getConversionRate, getCompanyCurrency, getCompanyHistoricalCurrency } = require('../utils/currencyConverter');
 const { cloudinary } = require('../utils/cloudinaryConfig');
 const { getInventoryConfig, recordStockIn } = require('../services/inventoryValuationService');
 
@@ -91,6 +92,10 @@ const createProduct = async (req, res) => {
             }
         }
 
+        const companyCurrency = await getCompanyCurrency(companyId);
+        const histCurr = await getCompanyHistoricalCurrency(companyId);
+        const writeRate = await getConversionRate(companyCurrency, histCurr);
+
         const productData = {
             name,
             sku: sku || null,
@@ -105,9 +110,9 @@ const createProduct = async (req, res) => {
             description: description || null,
             asOfDate: asOfDate ? new Date(asOfDate) : null,
             taxAccount: taxAccount || null,
-            initialCost: initialCost ? parseFloat(initialCost) : 0,
-            salePrice: salePrice ? parseFloat(salePrice) : 0,
-            purchasePrice: purchasePrice ? parseFloat(purchasePrice) : 0,
+            initialCost: initialCost ? (parseFloat(initialCost) * writeRate) : 0,
+            salePrice: salePrice ? (parseFloat(salePrice) * writeRate) : 0,
+            purchasePrice: purchasePrice ? (parseFloat(purchasePrice) * writeRate) : 0,
             discount: discount ? parseFloat(discount) : 0,
             remarks: remarks || null,
             companyId: parseInt(companyId)
@@ -408,6 +413,10 @@ const updateProduct = async (req, res) => {
         // Delete old stocks
         await prisma.stock.deleteMany({ where: { productId: parseInt(id) } });
 
+        const companyCurrency = await getCompanyCurrency(companyId);
+        const histCurr = await getCompanyHistoricalCurrency(companyId);
+        const writeRate = await getConversionRate(companyCurrency, histCurr);
+
         const updateData = {
             name: name || existingProduct.name,
             sku: sku || null,
@@ -422,9 +431,9 @@ const updateProduct = async (req, res) => {
             description: description || null,
             asOfDate: asOfDate ? new Date(asOfDate) : null,
             taxAccount: taxAccount || null,
-            initialCost: initialCost ? parseFloat(initialCost) : 0,
-            salePrice: salePrice ? parseFloat(salePrice) : 0,
-            purchasePrice: purchasePrice ? parseFloat(purchasePrice) : 0,
+            initialCost: initialCost ? (parseFloat(initialCost) * writeRate) : 0,
+            salePrice: salePrice ? (parseFloat(salePrice) * writeRate) : 0,
+            purchasePrice: purchasePrice ? (parseFloat(purchasePrice) * writeRate) : 0,
             discount: discount ? parseFloat(discount) : 0,
             remarks: remarks || null
         };
@@ -612,9 +621,16 @@ const getProducts = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
+        const companyCurrency = await getCompanyCurrency(companyId);
+        const histCurr = await getCompanyHistoricalCurrency(companyId);
+        const rate = await getConversionRate(histCurr, companyCurrency);
+
         // Add total quantity to each product
         const productsWithStats = products.map(p => ({
             ...p,
+            purchasePrice: (p.purchasePrice || 0) * rate,
+            salePrice: (p.salePrice || 0) * rate,
+            initialCost: (p.initialCost || 0) * rate,
             totalQuantity: p.stock.reduce((sum, s) => sum + s.quantity, 0)
         }));
 
@@ -665,6 +681,14 @@ const getProductById = async (req, res) => {
         });
 
         if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+
+        const companyCurrency = await getCompanyCurrency(companyId);
+        const histCurr = await getCompanyHistoricalCurrency(companyId);
+        const rate = await getConversionRate(histCurr, companyCurrency);
+
+        product.purchasePrice = (product.purchasePrice || 0) * rate;
+        product.salePrice = (product.salePrice || 0) * rate;
+        product.initialCost = (product.initialCost || 0) * rate;
 
         res.status(200).json({ success: true, data: product });
     } catch (error) {

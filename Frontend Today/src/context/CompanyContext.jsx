@@ -9,6 +9,22 @@ export const CompanyProvider = ({ children }) => {
     const { currentUser } = useContext(AuthContext);
     const [companySettings, setCompanySettings] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [liveRates, setLiveRates] = useState(null);
+
+    useEffect(() => {
+        const fetchLiveRates = async () => {
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD');
+                const data = await res.json();
+                if (data && data.rates) {
+                    setLiveRates(data.rates);
+                }
+            } catch (e) {
+                console.error("Error fetching live rates in CompanyContext:", e);
+            }
+        };
+        fetchLiveRates();
+    }, []);
 
     const fetchCompanySettings = async () => {
         const companyId = GetCompanyId();
@@ -70,6 +86,31 @@ export const CompanyProvider = ({ children }) => {
             // Ultimate fallback for very rare or unsupported currency codes
             return `${currencyCode} ${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
+    };
+    const FRONTEND_FALLBACK_RATES = {
+        "USD": 1,
+        "AED": 3.6725,
+        "INR": 95.240603,
+        "KWD": 0.309391,
+        "EUR": 0.878331,
+        "GBP": 0.753734,
+        "SAR": 3.75,
+        "JPY": 162.547842,
+        "CNY": 6.801054
+    };
+
+    const getExchangeRateFor = async (from, to) => {
+        const rates = liveRates || FRONTEND_FALLBACK_RATES;
+        const fromRate = rates[from] || FRONTEND_FALLBACK_RATES[from] || 1.0;
+        const toRate = rates[to] || FRONTEND_FALLBACK_RATES[to] || 1.0;
+        return toRate / fromRate;
+    };
+
+    const getSyncRate = (from, to) => {
+        const rates = liveRates || FRONTEND_FALLBACK_RATES;
+        const fromRate = rates[from] || FRONTEND_FALLBACK_RATES[from] || 1.0;
+        const toRate = rates[to] || FRONTEND_FALLBACK_RATES[to] || 1.0;
+        return toRate / fromRate;
     };
 
     const DEFAULT_LABELS = {
@@ -193,7 +234,7 @@ export const CompanyProvider = ({ children }) => {
     };
 
     return (
-        <CompanyContext.Provider value={{ companySettings, fetchCompanySettings, formatCurrency, getInvoiceLabel, getReceiptPaymentLabel, getReceiptPaymentHeader, getTableHeader, getDocumentTitle, loading }}>
+        <CompanyContext.Provider value={{ companySettings, fetchCompanySettings, formatCurrency, getInvoiceLabel, getReceiptPaymentLabel, getReceiptPaymentHeader, getTableHeader, getDocumentTitle, getExchangeRateFor, getSyncRate, loading }}>
             {children}
         </CompanyContext.Provider>
     );

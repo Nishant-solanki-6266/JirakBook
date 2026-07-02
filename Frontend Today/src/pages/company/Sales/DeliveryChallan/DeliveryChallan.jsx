@@ -121,7 +121,8 @@ const DeliveryChallan = () => {
         name: 'Zirak Books', address: '123 Business Avenue, Suite 404', email: 'info@zirakbooks.com', phone: '123-456-7890', notes: '', terms: ''
     });
     const [challanMeta, setChallanMeta] = useState({
-        challanNo: '', manualNo: '', date: new Date().toISOString().split('T')[0], carrier: '', vehicleNo: '', transportNote: '', remarks: ''
+        challanNo: '', manualNo: '', date: new Date().toISOString().split('T')[0], carrier: '', vehicleNo: '', transportNote: '', remarks: '',
+        deliveryPersonName: '', deliveryPersonMobile: '', deliveryPersonEmail: ''
     });
     const [customerId, setCustomerId] = useState('');
     const [customerDetails, setCustomerDetails] = useState({
@@ -478,7 +479,10 @@ const DeliveryChallan = () => {
             carrier: '',
             vehicleNo: '',
             transportNote: companyDetails.notes || '',
-            remarks: companyDetails.terms || ''
+            remarks: companyDetails.terms || '',
+            deliveryPersonName: '',
+            deliveryPersonMobile: '',
+            deliveryPersonEmail: ''
         });
         setIsEditMode(false);
         setIsViewMode(false);
@@ -639,15 +643,7 @@ const DeliveryChallan = () => {
                     });
                 }
 
-                setChallanMeta({
-                    challanNo: challan.challanNumber,
-                    manualNo: challan.manualReference || '',
-                    date: new Date(challan.date).toISOString().split('T')[0],
-                    carrier: challan.carrier || '',
-                    vehicleNo: challan.vehicleNo || '',
-                    transportNote: challan.transportNote || '',
-                    remarks: challan.remarks || ''
-                });
+
 
                 if (challan.salesorder) {
                     setSelectedOrder(challan.salesorder);
@@ -674,6 +670,23 @@ const DeliveryChallan = () => {
                     }
                 }
                 setCustomFieldValues(fieldValues);
+
+                setChallanMeta({
+                    challanNo: challan.challanNumber,
+                    manualNo: challan.manualReference || '',
+                    date: new Date(challan.date).toISOString().split('T')[0],
+                    carrier: challan.carrier || '',
+                    vehicleNo: challan.vehicleNo || '',
+                    transportNote: challan.transportNote || '',
+                    remarks: challan.remarks || '',
+                    deliveryPersonName: fieldValues.deliveryPersonName || '',
+                    deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
+                    deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
+                });
+
+                if (challan.salesorder) {
+                    setSelectedOrder(challan.salesorder);
+                }
 
                 setActiveModalStep(2);
                 setShowAddModal(true);
@@ -712,44 +725,47 @@ const DeliveryChallan = () => {
                     });
                 }
 
-                setChallanMeta({
-                    challanNo: challan.challanNumber,
-                    manualNo: challan.manualReference || '',
-                    date: new Date(challan.date).toISOString().split('T')[0],
-                    carrier: challan.carrier || '',
-                    vehicleNo: challan.vehicleNo || '',
-                    transportNote: challan.transportNote || '',
-                    remarks: challan.remarks || ''
-                });
+                 let fieldValues = {};
+                 if (challan.customFields) {
+                     try {
+                         fieldValues = typeof challan.customFields === 'string'
+                             ? JSON.parse(challan.customFields)
+                             : challan.customFields;
+                     } catch (e) {
+                         console.error('Error parsing custom fields on edit:', e);
+                     }
+                 }
+                 setCustomFieldValues(fieldValues);
 
-                if (challan.salesorder) {
-                    setSelectedOrder(challan.salesorder);
-                }
+                 setChallanMeta({
+                      challanNo: challan.challanNumber,
+                      manualNo: challan.manualReference || '',
+                      date: new Date(challan.date).toISOString().split('T')[0],
+                      carrier: challan.carrier || '',
+                      vehicleNo: challan.vehicleNo || '',
+                      transportNote: challan.transportNote || '',
+                      remarks: challan.remarks || '',
+                      deliveryPersonName: fieldValues.deliveryPersonName || '',
+                      deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
+                      deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
+                  });
 
-                setItems((challan.deliverychallanitem || challan.items || []).map(item => ({
-                    id: item.id,
-                    productId: item.productId,
-                    warehouseId: item.warehouseId,
-                    description: item.description || '',
-                    ordered: item.quantity,
-                    delivered: item.quantity,
-                    unit: item.product?.uom?.unitName || item.product?.salesUom?.unitName || item.product?.unit || 'pcs'
-                })));
+                  if (challan.salesorder) {
+                      setSelectedOrder(challan.salesorder);
+                  }
 
-                let fieldValues = {};
-                if (challan.customFields) {
-                    try {
-                        fieldValues = typeof challan.customFields === 'string'
-                            ? JSON.parse(challan.customFields)
-                            : challan.customFields;
-                    } catch (e) {
-                        console.error('Error parsing custom fields on edit:', e);
-                    }
-                }
-                setCustomFieldValues(fieldValues);
+                  setItems((challan.deliverychallanitem || challan.items || []).map(item => ({
+                      id: item.id,
+                      productId: item.productId,
+                      warehouseId: item.warehouseId,
+                      description: item.description || '',
+                      ordered: item.quantity,
+                      delivered: item.quantity,
+                      unit: item.product?.uom?.unitName || item.product?.salesUom?.unitName || item.product?.unit || 'pcs'
+                  })));
 
-                setActiveModalStep(2);
-                setShowAddModal(true);
+                 setActiveModalStep(2);
+                 setShowAddModal(true);
             }
         } catch (error) {
             console.error('Error fetching challan for edit:', error);
@@ -871,7 +887,12 @@ const DeliveryChallan = () => {
                 customerId: parseInt(customerId),
                 companyId: companyId,
                 salesOrderId: selectedOrder ? parseInt(selectedOrder.id) : null,
-                customFields: JSON.stringify(customFieldValues),
+                customFields: JSON.stringify({
+                    ...customFieldValues,
+                    deliveryPersonName: challanMeta.deliveryPersonName,
+                    deliveryPersonMobile: challanMeta.deliveryPersonMobile,
+                    deliveryPersonEmail: challanMeta.deliveryPersonEmail
+                }),
                 vehicleNo: challanMeta.vehicleNo,
                 carrier: challanMeta.carrier,
                 transportNote: challanMeta.transportNote,
@@ -1298,6 +1319,24 @@ const DeliveryChallan = () => {
                                                                             <span>{challanMeta.vehicleNo}</span>
                                                                         </div>
                                                                     )}
+                                                                    {challanMeta.deliveryPersonName && (
+                                                                        <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                            <span className="invoice-label">Del. Person:</span>
+                                                                            <span>{challanMeta.deliveryPersonName}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {challanMeta.deliveryPersonMobile && (
+                                                                        <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                            <span className="invoice-label">Del. Mobile:</span>
+                                                                            <span>{challanMeta.deliveryPersonMobile}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {challanMeta.deliveryPersonEmail && (
+                                                                        <div className="invoice-meta-row flex justify-between gap-8 py-1 text-sm">
+                                                                            <span className="invoice-label">Del. Email:</span>
+                                                                            <span>{challanMeta.deliveryPersonEmail}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1490,6 +1529,24 @@ const DeliveryChallan = () => {
                                                         <input type="text"
                                                             value={challanMeta.vehicleNo} onChange={(e) => setChallanMeta({ ...challanMeta, vehicleNo: e.target.value })}
                                                             className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999' />
+                                                    </div>
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Del. Person Name</label>
+                                                        <input type="text"
+                                                            value={challanMeta.deliveryPersonName || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonName: e.target.value })}
+                                                            className="Zirak-DC-meta-input" placeholder='Enter name' />
+                                                    </div>
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Del. Person Mobile</label>
+                                                        <input type="text"
+                                                            value={challanMeta.deliveryPersonMobile || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonMobile: e.target.value })}
+                                                            className="Zirak-DC-meta-input" placeholder='Enter mobile' />
+                                                    </div>
+                                                    <div className="Zirak-DC-meta-row">
+                                                        <label>Del. Person Email</label>
+                                                        <input type="text"
+                                                            value={challanMeta.deliveryPersonEmail || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonEmail: e.target.value })}
+                                                            className="Zirak-DC-meta-input" placeholder='Enter email' />
                                                     </div>
                                                 </div>
                                             </div>
