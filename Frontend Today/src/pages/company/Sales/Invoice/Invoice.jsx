@@ -1156,6 +1156,18 @@ const Invoice = () => {
 
     const handleSave = async () => {
         try {
+            if (!invoiceMeta.deliveryPersonName?.trim()) {
+                toast.warning("Delivery Person Name is required.");
+                return;
+            }
+            if (!invoiceMeta.deliveryPersonMobile?.trim()) {
+                toast.warning("Delivery Person Mobile is required.");
+                return;
+            }
+            if (!invoiceMeta.deliveryPersonEmail?.trim()) {
+                toast.warning("Delivery Person Email is required.");
+                return;
+            }
             const companyId = GetCompanyId();
             const customFieldsPayload = {
                 ...customFieldValues,
@@ -2654,24 +2666,24 @@ const Invoice = () => {
                                     </div>
                                 )}
                                 <div className="Invoice-meta-col">
-                                    <label>Del. Person Name</label>
-                                    <input type="text"
+                                    <label>Del. Person Name <span style={{color:'red'}}>*</span></label>
+                                    <input type="text" required
                                         value={invoiceMeta.deliveryPersonName || ''}
                                         onChange={(e) => setInvoiceMeta({ ...invoiceMeta, deliveryPersonName: e.target.value })}
                                         placeholder="Enter name"
                                         className="Invoice-compact-input" />
                                 </div>
                                 <div className="Invoice-meta-col">
-                                    <label>Del. Person Mobile</label>
-                                    <input type="text"
+                                    <label>Del. Person Mobile <span style={{color:'red'}}>*</span></label>
+                                    <input type="text" required
                                         value={invoiceMeta.deliveryPersonMobile || ''}
                                         onChange={(e) => setInvoiceMeta({ ...invoiceMeta, deliveryPersonMobile: e.target.value })}
                                         placeholder="Enter mobile"
                                         className="Invoice-compact-input" />
                                 </div>
                                 <div className="Invoice-meta-col">
-                                    <label>Del. Person Email</label>
-                                    <input type="text"
+                                    <label>Del. Person Email <span style={{color:'red'}}>*</span></label>
+                                    <input type="text" required
                                         value={invoiceMeta.deliveryPersonEmail || ''}
                                         onChange={(e) => setInvoiceMeta({ ...invoiceMeta, deliveryPersonEmail: e.target.value })}
                                         placeholder="Enter email"

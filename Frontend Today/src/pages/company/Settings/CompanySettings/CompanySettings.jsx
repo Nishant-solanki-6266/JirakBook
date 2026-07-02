@@ -821,7 +821,7 @@ const CompanySettings = () => {
         setNumberingSettings(prev => {
             const updated = [...prev];
             const targetSetting = { ...updated[index] };
-            
+
             if (field === 'pattern') {
                 if (value === 'custom') {
                     const currentPrefix = targetSetting.prefix || '';
@@ -841,14 +841,14 @@ const CompanySettings = () => {
                         .replace(/{DD}/g, '')
                         .replace(/--+/g, '-')
                         .replace(/^-|-$/g, '');
-                    
+
                     if (newPrefix && !newPrefix.endsWith('-')) {
                         newPrefix = `${newPrefix}-`;
                     }
                     targetSetting.prefix = newPrefix;
                 }
             }
-            
+
             targetSetting[field] = value;
             updated[index] = targetSetting;
             return updated;
@@ -859,7 +859,7 @@ const CompanySettings = () => {
     const previewNextNumber = (setting) => {
         const { prefix = '', currentNumber = 1, paddingLength = 4, pattern = 'numeric' } = setting;
         let finalPrefix = prefix || '';
-        
+
         if (pattern === 'custom') {
             const date = new Date();
             const yyyy = date.getFullYear().toString();
@@ -872,7 +872,7 @@ const CompanySettings = () => {
                 .replace(/{MM}/g, mm)
                 .replace(/{DD}/g, dd);
         }
-        
+
         let sequenceStr = '';
         if (pattern === 'alphanumeric') {
             const b36 = currentNumber.toString(36).toUpperCase();
@@ -880,7 +880,7 @@ const CompanySettings = () => {
         } else {
             sequenceStr = String(currentNumber).padStart(paddingLength, '0');
         }
-        
+
         return `${finalPrefix}${sequenceStr}`;
     };
 
@@ -1568,9 +1568,9 @@ const CompanySettings = () => {
                                                         type="text"
                                                         value={
                                                             key === 'number' ? receiptTableHeaders.invoiceNumber :
-                                                            key === 'date' ? receiptTableHeaders.invoiceDate :
-                                                            key === 'amount' ? receiptTableHeaders.invoiceAmount :
-                                                            receiptTableHeaders[key] || ''
+                                                                key === 'date' ? receiptTableHeaders.invoiceDate :
+                                                                    key === 'amount' ? receiptTableHeaders.invoiceAmount :
+                                                                        receiptTableHeaders[key] || ''
                                                         }
                                                         onChange={(e) => handleHeaderChange(key, e.target.value)}
                                                         style={{ padding: '0.5rem', fontSize: '0.9rem', width: '100%' }}
@@ -2042,7 +2042,7 @@ const CompanySettings = () => {
                             <p className="companySetting-page-subtitle" style={{ marginBottom: '1.5rem' }}>
                                 Configure custom prefixes, starting sequence numbers, padding formats, and generation patterns per transaction type.
                             </p>
-                            
+
                             <div className="numbering-settings-grid">
                                 <table className="numbering-settings-table">
                                     <thead>
@@ -2235,7 +2235,7 @@ const CustomFieldsTab = ({ customFieldsConfig, setCustomFieldsConfig }) => {
     ];
 
     const [selectedType, setSelectedType] = useState('invoice');
-    
+
     // Find fields for the selected transaction type
     const activeFields = customFieldsConfig.find(item => item.transactionType === selectedType)?.fields || [];
 

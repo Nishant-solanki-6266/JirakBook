@@ -878,6 +878,18 @@ const DeliveryChallan = () => {
                 toast.error("All items must have a product and a warehouse");
                 return;
             }
+            if (!challanMeta.deliveryPersonName?.trim()) {
+                toast.warning("Delivery Person Name is required.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonMobile?.trim()) {
+                toast.warning("Delivery Person Mobile is required.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonEmail?.trim()) {
+                toast.warning("Delivery Person Email is required.");
+                return;
+            }
 
             const companyId = GetCompanyId();
             const data = {
@@ -1531,20 +1543,20 @@ const DeliveryChallan = () => {
                                                             className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999' />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Name</label>
-                                                        <input type="text"
+                                                        <label>Del. Person Name <span style={{color:'red'}}>*</span></label>
+                                                        <input type="text" required
                                                             value={challanMeta.deliveryPersonName || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonName: e.target.value })}
                                                             className="Zirak-DC-meta-input" placeholder='Enter name' />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Mobile</label>
-                                                        <input type="text"
+                                                        <label>Del. Person Mobile <span style={{color:'red'}}>*</span></label>
+                                                        <input type="text" required
                                                             value={challanMeta.deliveryPersonMobile || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonMobile: e.target.value })}
                                                             className="Zirak-DC-meta-input" placeholder='Enter mobile' />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Email</label>
-                                                        <input type="text"
+                                                        <label>Del. Person Email <span style={{color:'red'}}>*</span></label>
+                                                        <input type="text" required
                                                             value={challanMeta.deliveryPersonEmail || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonEmail: e.target.value })}
                                                             className="Zirak-DC-meta-input" placeholder='Enter email' />
                                                     </div>
