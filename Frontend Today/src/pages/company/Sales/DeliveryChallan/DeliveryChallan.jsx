@@ -586,7 +586,7 @@ const DeliveryChallan = () => {
             });
 
         if (productItems.length === 0) {
-            toast.warning("This Sales Order contains no physical products to deliver.");
+            toast.error("This Sales Order contains no physical products to deliver.");
             return;
         }
 
@@ -871,7 +871,27 @@ const DeliveryChallan = () => {
     const handleSave = async (allowDuplicate = false) => {
         try {
             if (!customerId) {
-                toast.warning("Please select a customer.");
+                toast.error("Please select a customer.");
+                return;
+            }
+            if (!challanMeta.challanNo || !challanMeta.challanNo.trim()) {
+                toast.error("Please enter a Challan Number.");
+                return;
+            }
+            if (!challanMeta.date) {
+                toast.error("Please select a Date.");
+                return;
+            }
+            if (!challanMeta.vehicleNo || !challanMeta.vehicleNo.trim()) {
+                toast.error("Please enter a Vehicle Number.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonName || !challanMeta.deliveryPersonName.trim()) {
+                toast.error("Please enter the Delivery Person Name.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonMobile || !challanMeta.deliveryPersonMobile.trim()) {
+                toast.error("Please enter the Delivery Person Mobile.");
                 return;
             }
             if (items.some(i => !i.productId || !i.warehouseId)) {
@@ -1503,13 +1523,14 @@ const DeliveryChallan = () => {
 
                                                 <div className="Zirak-DC-meta-fields-col">
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Challan No.</label>
+                                                        <label>Challan No. <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input
                                                             type="text"
                                                             value={challanMeta.challanNo || ''}
                                                             onChange={(e) => setChallanMeta({ ...challanMeta, challanNo: e.target.value })}
                                                             disabled={isViewMode || !!editId}
                                                             className={`Zirak-DC-meta-input ${isViewMode || editId ? 'Zirak-DC-disabled' : ''}`}
+                                                            required
                                                         />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
@@ -1519,28 +1540,32 @@ const DeliveryChallan = () => {
                                                             className="Zirak-DC-meta-input" />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Date</label>
+                                                        <label>Date <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="date"
                                                             value={challanMeta.date} onChange={(e) => setChallanMeta({ ...challanMeta, date: e.target.value })}
-                                                            className="Zirak-DC-meta-input" />
+                                                            className="Zirak-DC-meta-input"
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Vehicle No</label>
+                                                        <label>Vehicle No <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="text"
                                                             value={challanMeta.vehicleNo} onChange={(e) => setChallanMeta({ ...challanMeta, vehicleNo: e.target.value })}
-                                                            className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999' />
+                                                            className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999'
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Name</label>
+                                                        <label>Del. Person Name <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="text"
                                                             value={challanMeta.deliveryPersonName || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonName: e.target.value })}
-                                                            className="Zirak-DC-meta-input" placeholder='Enter name' />
+                                                            className="Zirak-DC-meta-input" placeholder='Enter name'
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Mobile</label>
+                                                        <label>Del. Person Mobile <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="text"
                                                             value={challanMeta.deliveryPersonMobile || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonMobile: e.target.value })}
-                                                            className="Zirak-DC-meta-input" placeholder='Enter mobile' />
+                                                            className="Zirak-DC-meta-input" placeholder='Enter mobile'
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
                                                         <label>Del. Person Email</label>
@@ -1552,7 +1577,7 @@ const DeliveryChallan = () => {
                                             </div>
 
                                             <div className="Zirak-DC-customer-selection-area">
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                                                     <label className="Zirak-DC-form-label-sm font-bold Zirak-DC-text-slate-700">Customer</label>
                                                     {!selectedOrder && (
                                                         <button
