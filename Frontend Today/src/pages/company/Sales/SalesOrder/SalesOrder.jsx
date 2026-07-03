@@ -7,7 +7,7 @@ import {
     Search, Plus, Pencil, Trash2, X, ChevronDown,
     FileText, ShoppingCart, Truck, Receipt, CreditCard,
     CheckCircle2, Clock, ArrowRight, Download, Send, Printer,
-    FileSearch, Eye
+    FileSearch, Eye, AlertTriangle
 } from 'lucide-react';
 import { useContext } from 'react';
 import { AuthContext } from '../../../../context/AuthContext';
@@ -141,6 +141,8 @@ const SalesOrder = () => {
     const [orderMeta, setOrderMeta] = useState({
         manualNo: '', date: new Date().toISOString().split('T')[0], deliveryDate: ''
     });
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [duplicateRefToRetry, setDuplicateRefToRetry] = useState('');
     const [orderNumber, setOrderNumber] = useState('');
     const [customerId, setCustomerId] = useState('');
     const [customerDetails, setCustomerDetails] = useState({
@@ -868,12 +870,25 @@ const SalesOrder = () => {
         });
     }, [activeQuotations, quotationSearchTerm, quotationFilterCustomerId]);
 
-    const handleSave = async (allowDuplicate = false) => {
+    const incrementString = (str) => {
+        if (!str) return '1';
+        const match = str.match(/(\d+)$/);
+        if (match) {
+            const numStr = match[1];
+            const nextNum = parseInt(numStr, 10) + 1;
+            const paddedNum = String(nextNum).padStart(numStr.length, '0');
+            return str.substring(0, str.length - numStr.length) + paddedNum;
+        } else {
+            return str + '1';
+        }
+    };
+
+    const handleSave = async (allowDuplicate = false, overrideManualRef = null) => {
         try {
             const companyId = GetCompanyId();
             const data = {
                 orderNumber: editingId ? (salesOrders.find(o => o.id === editingId)?.orderNumber) : (orderNumber || `SO-${Date.now()}`),
-                manualReference: orderMeta.manualNo,
+                manualReference: overrideManualRef !== null ? overrideManualRef : (orderMeta.manualNo || ''),
                 date: orderMeta.date,
                 expectedDate: orderMeta.deliveryDate,
                 customerId: parseInt(customerId),
@@ -926,11 +941,10 @@ const SalesOrder = () => {
                     setShowAddModal(false);
                 }
             } catch (err) {
-                if (err.response?.data?.isDuplicateWarning) {
-                    const confirmUse = window.confirm(err.response.data.message);
-                    if (confirmUse) {
-                        await handleSave(true);
-                    }
+                if (err.response?.data?.isDuplicateWarning || err.response?.data?.isDuplicate) {
+                    const currentRef = overrideManualRef !== null ? overrideManualRef : (orderMeta.manualNo || '');
+                    setDuplicateRefToRetry(currentRef);
+                    setShowDuplicateModal(true);
                 } else {
                     toast.error(err.response?.data?.message || 'Error saving sales order');
                     console.error('Error saving sales order:', err);
@@ -3148,6 +3162,93 @@ const SalesOrder = () => {
                                 <button type="submit" className="Zirak-UOM-save-btn">Save</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {showDuplicateModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999
+                }}>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        width: '400px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        textAlign: 'center',
+                        fontFamily: 'inherit'
+                    }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            backgroundColor: '#fee2e2',
+                            color: '#ef4444',
+                            marginBottom: '16px'
+                        }}>
+                            <AlertTriangle size={24} />
+                        </div>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 'bold', color: '#1f2937' }}>
+                            Duplicate Manual Number
+                        </h3>
+                        <p style={{ margin: '0 0 24px 0', fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.5' }}>
+                            This is a duplicate manual number. Do you want to change it?
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                            <button
+                                onClick={async () => {
+                                    setShowDuplicateModal(false);
+                                    await handleSave(true, duplicateRefToRetry);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #d1d5db',
+                                    backgroundColor: '#ffffff',
+                                    color: '#374151',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowDuplicateModal(false);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: '#10b981',
+                                    color: '#ffffff',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+                            >
+                                No
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

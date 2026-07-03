@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
     Search, Plus, Pencil, Trash2, X, ChevronDown,
     FileText, ShoppingCart, Truck, Receipt, CreditCard,
-    CheckCircle2, Clock, ArrowRight, Download, Send, Printer, Eye
+    CheckCircle2, Clock, ArrowRight, Download, Send, Printer, Eye, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useContext } from 'react';
@@ -174,6 +174,8 @@ const PurchaseQuotation = () => {
     const [quotationMeta, setQuotationMeta] = useState({
         quotationNumber: '', manualReference: '', date: new Date().toISOString().split('T')[0], expiryDate: ''
     });
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [duplicateRefToRetry, setDuplicateRefToRetry] = useState('');
     const [vendorId, setVendorId] = useState('');
     const [items, setItems] = useState([
         { id: Date.now(), productId: '', warehouseId: '', qty: 1, uomId: '', rate: 0, tax: 0, discount: 0, total: 0, description: '' }
@@ -917,7 +919,20 @@ const PurchaseQuotation = () => {
         });
     }, [quotations, searchTerm, startDate, endDate]);
 
-    const handleSave = async () => {
+    const incrementString = (str) => {
+        if (!str) return '1';
+        const match = str.match(/(\d+)$/);
+        if (match) {
+            const numStr = match[1];
+            const nextNum = parseInt(numStr, 10) + 1;
+            const paddedNum = String(nextNum).padStart(numStr.length, '0');
+            return str.substring(0, str.length - numStr.length) + paddedNum;
+        } else {
+            return str + '1';
+        }
+    };
+
+    const handleSave = async (allowDuplicate = false, overrideManualRef = null) => {
         const totals = calculateTotals();
 
         if (!vendorId) {
@@ -929,7 +944,7 @@ const PurchaseQuotation = () => {
         const payload = {
             companyId,
             quotationNumber: quotationMeta.quotationNumber || `PQ-${Date.now()}`,
-            manualReference: quotationMeta.manualReference,
+            manualReference: overrideManualRef !== null ? overrideManualRef : (quotationMeta.manualReference || ''),
             date: quotationMeta.date,
             expiryDate: quotationMeta.expiryDate,
             vendorId: parseInt(vendorId),
@@ -948,7 +963,8 @@ const PurchaseQuotation = () => {
             overallDiscount: overallDiscount,
             overallDiscountType: overallDiscountType,
             attachments: '', // Placeholder for attachments string if implemented
-            customFields: JSON.stringify(customFieldValues)
+            customFields: JSON.stringify(customFieldValues),
+            allowDuplicateManualNo: allowDuplicate === true
         };
 
         try {
@@ -962,8 +978,14 @@ const PurchaseQuotation = () => {
             setShowAddModal(false);
             fetchQuotations();
         } catch (error) {
-            console.error(error);
-            toast.error(error.message || "Failed to save");
+            if (error.response?.data?.isDuplicateWarning || error.response?.data?.isDuplicate) {
+                const currentRef = overrideManualRef !== null ? overrideManualRef : (quotationMeta.manualReference || '');
+                setDuplicateRefToRetry(currentRef);
+                setShowDuplicateModal(true);
+            } else {
+                console.error(error);
+                toast.error(error.response?.data?.message || error.message || "Failed to save");
+            }
         }
     };
 
@@ -2908,6 +2930,93 @@ const PurchaseQuotation = () => {
                                 <button type="submit" className="Zirak-UOM-save-btn">Save</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {showDuplicateModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999
+                }}>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        width: '400px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        textAlign: 'center',
+                        fontFamily: 'inherit'
+                    }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            backgroundColor: '#fee2e2',
+                            color: '#ef4444',
+                            marginBottom: '16px'
+                        }}>
+                            <AlertTriangle size={24} />
+                        </div>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 'bold', color: '#1f2937' }}>
+                            Duplicate Manual Number
+                        </h3>
+                        <p style={{ margin: '0 0 24px 0', fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.5' }}>
+                            This is a duplicate manual number. Do you want to change it?
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                            <button
+                                onClick={async () => {
+                                    setShowDuplicateModal(false);
+                                    await handleSave(true, duplicateRefToRetry);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #d1d5db',
+                                    backgroundColor: '#ffffff',
+                                    color: '#374151',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowDuplicateModal(false);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: '#10b981',
+                                    color: '#ffffff',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+                            >
+                                No
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

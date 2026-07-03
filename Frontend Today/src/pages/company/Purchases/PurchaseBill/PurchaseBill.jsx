@@ -3324,8 +3324,9 @@ const PurchaseBill = () => {
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     setShowDuplicateModal(false);
+                                    await handleSave(true, duplicateRefToRetry);
                                 }}
                                 style={{
                                     flex: 1,
@@ -3344,11 +3345,8 @@ const PurchaseBill = () => {
                                 Yes
                             </button>
                             <button
-                                onClick={async () => {
+                                onClick={() => {
                                     setShowDuplicateModal(false);
-                                    const nextRef = incrementString(duplicateRefToRetry);
-                                    setManualReference(nextRef);
-                                    await handleSave(false, nextRef);
                                 }}
                                 style={{
                                     flex: 1,

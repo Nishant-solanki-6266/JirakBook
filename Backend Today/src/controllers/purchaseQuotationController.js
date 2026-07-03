@@ -5,8 +5,21 @@ const numberingService = require('../services/numberingService');
 // Create Purchase Quotation
 const createQuotation = async (req, res) => {
     try {
-        const { quotationNumber, manualReference, date, expiryDate, vendorId, items, notes, terms, attachments, overallDiscount, overallDiscountType, customFields, manualStatus, status } = req.body;
+        const { quotationNumber, manualReference, date, expiryDate, vendorId, items, notes, terms, attachments, overallDiscount, overallDiscountType, customFields, manualStatus, status, allowDuplicateManualNo } = req.body;
         const companyId = req.user?.companyId || req.body.companyId;
+
+        if (manualReference && !(allowDuplicateManualNo === true || allowDuplicateManualNo === 'true')) {
+            const existing = await prisma.purchasequotation.findFirst({
+                where: { companyId: parseInt(companyId), manualReference }
+            });
+            if (existing) {
+                return res.status(400).json({
+                    success: false,
+                    isDuplicateWarning: true,
+                    message: `Manual reference number '${manualReference}' already exists. Do you want to use this duplicate number?`
+                });
+            }
+        }
 
         if (!quotationNumber || !vendorId || !items || items.length === 0) {
             return res.status(400).json({ success: false, message: 'Please provide all required fields' });
@@ -202,7 +215,7 @@ const getQuotationById = async (req, res) => {
 const updateQuotation = async (req, res) => {
     try {
         const { id } = req.params;
-        const { quotationNumber, manualReference, date, expiryDate, vendorId, items, notes, terms, attachments, status, overallDiscount, overallDiscountType, customFields, manualStatus, onlyUpdateStatus } = req.body;
+        const { quotationNumber, manualReference, date, expiryDate, vendorId, items, notes, terms, attachments, status, overallDiscount, overallDiscountType, customFields, manualStatus, onlyUpdateStatus, allowDuplicateManualNo } = req.body;
         const companyId = req.user?.companyId || req.query.companyId || req.body.companyId;
 
         if (onlyUpdateStatus === true || onlyUpdateStatus === 'true') {
@@ -222,6 +235,23 @@ const updateQuotation = async (req, res) => {
 
         if (!existing) {
             return res.status(404).json({ success: false, message: 'Quotation not found' });
+        }
+
+        if (manualReference && !(allowDuplicateManualNo === true || allowDuplicateManualNo === 'true')) {
+            const existingDuplicate = await prisma.purchasequotation.findFirst({
+                where: {
+                    companyId: parseInt(companyId),
+                    manualReference,
+                    id: { not: parseInt(id) }
+                }
+            });
+            if (existingDuplicate) {
+                return res.status(400).json({
+                    success: false,
+                    isDuplicateWarning: true,
+                    message: `Manual reference number '${manualReference}' already exists. Do you want to use this duplicate number?`
+                });
+            }
         }
 
         const vendor = await prisma.vendor.findUnique({

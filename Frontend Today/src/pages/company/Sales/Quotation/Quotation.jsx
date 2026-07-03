@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Search, Plus, Pencil, Trash2, X, ChevronDown,
     FileText, ShoppingCart, Truck, Receipt, CreditCard,
-    CheckCircle2, Clock, ArrowRight, Download, Send, Printer, Eye
+    CheckCircle2, Clock, ArrowRight, Download, Send, Printer, Eye, AlertTriangle
 } from 'lucide-react';
 import { useContext } from 'react';
 import { AuthContext } from '../../../../context/AuthContext';
@@ -174,6 +174,8 @@ const Quotation = () => {
     const [quotationMeta, setQuotationMeta] = useState({
         manualNo: '', date: new Date().toISOString().split('T')[0], validTill: ''
     });
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [duplicateRefToRetry, setDuplicateRefToRetry] = useState('');
     const [quotationNumber, setQuotationNumber] = useState('');
     const [customerId, setCustomerId] = useState('');
     const [customerDetails, setCustomerDetails] = useState({ address: '', email: '', phone: '' });
@@ -707,6 +709,17 @@ const Quotation = () => {
                     email: quoteToEdit.customer?.email || '',
                     phone: quoteToEdit.customer?.phone || ''
                 });
+                let fieldValues = {};
+                if (quoteToEdit.customFields) {
+                    try {
+                        fieldValues = typeof quoteToEdit.customFields === 'string'
+                            ? JSON.parse(quoteToEdit.customFields)
+                            : quoteToEdit.customFields;
+                    } catch (e) {
+                        console.error('Error parsing custom fields on edit:', e);
+                    }
+                }
+
                 setQuotationMeta({
                     manualNo: quoteToEdit.manualReference || '',
                     date: quoteToEdit.date.split('T')[0],
@@ -733,16 +746,6 @@ const Quotation = () => {
                 setOverallDiscount(quoteToEdit.overallDiscount || 0);
                 setOverallDiscountType(quoteToEdit.overallDiscountType || 'amount');
 
-                let fieldValues = {};
-                if (quoteToEdit.customFields) {
-                    try {
-                        fieldValues = typeof quoteToEdit.customFields === 'string'
-                            ? JSON.parse(quoteToEdit.customFields)
-                            : quoteToEdit.customFields;
-                    } catch (e) {
-                        console.error('Error parsing custom fields on edit:', e);
-                    }
-                }
                 setCustomFieldValues(fieldValues);
 
                 setShowAddModal(true);
@@ -826,12 +829,25 @@ const Quotation = () => {
         });
     }, [quotations, searchTerm, startDate, endDate]);
 
-    const handleSave = async (allowDuplicate = false) => {
+    const incrementString = (str) => {
+        if (!str) return '1';
+        const match = str.match(/(\d+)$/);
+        if (match) {
+            const numStr = match[1];
+            const nextNum = parseInt(numStr, 10) + 1;
+            const paddedNum = String(nextNum).padStart(numStr.length, '0');
+            return str.substring(0, str.length - numStr.length) + paddedNum;
+        } else {
+            return str + '1';
+        }
+    };
+
+    const handleSave = async (allowDuplicate = false, overrideManualRef = null) => {
         try {
             const companyId = GetCompanyId();
             const data = {
                 quotationNumber: editingId ? (quotations.find(q => q.id === editingId)?.quotationNumber) : (quotationNumber || `QUO-${Date.now()}`),
-                manualReference: quotationMeta.manualNo,
+                manualReference: overrideManualRef !== null ? overrideManualRef : (quotationMeta.manualNo || ''),
                 date: quotationMeta.date,
                 expiryDate: quotationMeta.validTill,
                 customerId: parseInt(customerId),
@@ -871,11 +887,10 @@ const Quotation = () => {
                     setShowAddModal(false);
                 }
             } catch (err) {
-                if (err.response?.data?.isDuplicateWarning) {
-                    const confirmUse = window.confirm(err.response.data.message);
-                    if (confirmUse) {
-                        await handleSave(true);
-                    }
+                if (err.response?.data?.isDuplicateWarning || err.response?.data?.isDuplicate) {
+                    const currentRef = overrideManualRef !== null ? overrideManualRef : (quotationMeta.manualNo || '');
+                    setDuplicateRefToRetry(currentRef);
+                    setShowDuplicateModal(true);
                 } else {
                     toast.error(err.response?.data?.message || 'Error saving quotation');
                     console.error('Error saving quotation:', err);
@@ -2882,6 +2897,93 @@ const Quotation = () => {
                                 <button type="submit" className="Zirak-UOM-save-btn">Save</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {showDuplicateModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999
+                }}>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        width: '400px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        textAlign: 'center',
+                        fontFamily: 'inherit'
+                    }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            backgroundColor: '#fee2e2',
+                            color: '#ef4444',
+                            marginBottom: '16px'
+                        }}>
+                            <AlertTriangle size={24} />
+                        </div>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 'bold', color: '#1f2937' }}>
+                            Duplicate Manual Number
+                        </h3>
+                        <p style={{ margin: '0 0 24px 0', fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.5' }}>
+                            This is a duplicate manual number. Do you want to change it?
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                            <button
+                                onClick={async () => {
+                                    setShowDuplicateModal(false);
+                                    await handleSave(true, duplicateRefToRetry);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #d1d5db',
+                                    backgroundColor: '#ffffff',
+                                    color: '#374151',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowDuplicateModal(false);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: '#10b981',
+                                    color: '#ffffff',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+                            >
+                                No
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
