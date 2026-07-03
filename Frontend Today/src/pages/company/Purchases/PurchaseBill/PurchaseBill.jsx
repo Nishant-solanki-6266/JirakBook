@@ -1104,10 +1104,23 @@ const PurchaseBill = () => {
                 setViewBill(billData);
                 setEditingId(billData.id);
                 setVendorId(billData.vendorId);
+                let viewFieldValues = {};
+                if (billData.customFields) {
+                    try {
+                        viewFieldValues = typeof billData.customFields === 'string'
+                            ? JSON.parse(billData.customFields)
+                            : billData.customFields;
+                    } catch (e) {
+                        console.error('Error parsing custom fields on view:', e);
+                    }
+                }
                 setBillMeta({
                     manualNo: billData.billNumber,
                     date: billData.date.split('T')[0],
-                    dueDate: billData.dueDate ? billData.dueDate.split('T')[0] : ''
+                    dueDate: billData.dueDate ? billData.dueDate.split('T')[0] : '',
+                    deliveryPersonName: viewFieldValues.deliveryPersonName || '',
+                    deliveryPersonMobile: viewFieldValues.deliveryPersonMobile || '',
+                    deliveryPersonEmail: viewFieldValues.deliveryPersonEmail || ''
                 });
                 setNotes(billData.notes || '');
 
@@ -1363,6 +1376,18 @@ const PurchaseBill = () => {
         const isForce = forceAllowDuplicate === true;
         if (!vendorId) {
             toast.error("Please select a vendor");
+            return;
+        }
+        if (!billMeta.deliveryPersonName?.trim()) {
+            toast.warning("Delivery Person Name is required.");
+            return;
+        }
+        if (!billMeta.deliveryPersonMobile?.trim()) {
+            toast.warning("Delivery Person Mobile is required.");
+            return;
+        }
+        if (!billMeta.deliveryPersonEmail?.trim()) {
+            toast.warning("Delivery Person Email is required.");
             return;
         }
 
@@ -1779,6 +1804,27 @@ const PurchaseBill = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Delivery Person Details */}
+                        {(() => {
+                            let dp = {};
+                            if (viewBill?.customFields) {
+                                try {
+                                    dp = typeof viewBill.customFields === 'string'
+                                        ? JSON.parse(viewBill.customFields)
+                                        : viewBill.customFields;
+                                } catch (e) {}
+                            }
+                            if (!dp.deliveryPersonName && !dp.deliveryPersonMobile && !dp.deliveryPersonEmail) return null;
+                            return (
+                                <div style={{ display: 'flex', gap: '30px', margin: '14px 0', padding: '12px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', textAlign: 'left' }}>
+                                    <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#64748b', textTransform: 'uppercase', alignSelf: 'center', marginRight: 8 }}>Delivery Person</div>
+                                    {dp.deliveryPersonName && <div><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Name</span><br /><span style={{ fontWeight: 600 }}>{dp.deliveryPersonName}</span></div>}
+                                    {dp.deliveryPersonMobile && <div><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Mobile</span><br /><span style={{ fontWeight: 600 }}>{dp.deliveryPersonMobile}</span></div>}
+                                    {dp.deliveryPersonEmail && <div><span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Email</span><br /><span style={{ fontWeight: 600 }}>{dp.deliveryPersonEmail}</span></div>}
+                                </div>
+                            );
+                        })()}
 
                         {/* Custom Fields Print View */}
                         {(() => {
@@ -2655,30 +2701,6 @@ const PurchaseBill = () => {
                                             className="PBILL-compact-input" />
                                     </div>
                                 )}
-                                <div className="PBILL-meta-col">
-                                    <label>Del. Person Name</label>
-                                    <input type="text"
-                                        value={billMeta.deliveryPersonName || ''}
-                                        onChange={(e) => setBillMeta({ ...billMeta, deliveryPersonName: e.target.value })}
-                                        placeholder="Enter name"
-                                        className="PBILL-compact-input" />
-                                </div>
-                                <div className="PBILL-meta-col">
-                                    <label>Del. Person Mobile</label>
-                                    <input type="text"
-                                        value={billMeta.deliveryPersonMobile || ''}
-                                        onChange={(e) => setBillMeta({ ...billMeta, deliveryPersonMobile: e.target.value })}
-                                        placeholder="Enter mobile"
-                                        className="PBILL-compact-input" />
-                                </div>
-                                <div className="PBILL-meta-col">
-                                    <label>Del. Person Email</label>
-                                    <input type="text"
-                                        value={billMeta.deliveryPersonEmail || ''}
-                                        onChange={(e) => setBillMeta({ ...billMeta, deliveryPersonEmail: e.target.value })}
-                                        placeholder="Enter email"
-                                        className="PBILL-compact-input" />
-                                </div>
                             </div>
 
                             {/* Vendor & Address Grid */}

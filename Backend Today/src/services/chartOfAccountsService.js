@@ -705,6 +705,19 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
                     include: {
                         customer: {
                             select: { id: true, name: true, nameArabic: true, phone: true, email: true }
+                        },
+                        invoiceitem: {
+                            include: {
+                                product: {
+                                    select: { id: true, name: true, sku: true, unit: true }
+                                },
+                                service: {
+                                    select: { id: true, name: true, sku: true }
+                                },
+                                warehouse: {
+                                    select: { id: true, name: true }
+                                }
+                            }
                         }
                     }
                 },
@@ -712,6 +725,16 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
                     include: {
                         vendor: {
                             select: { id: true, name: true, nameArabic: true, phone: true, email: true }
+                        },
+                        purchasebillitem: {
+                            include: {
+                                product: {
+                                    select: { id: true, name: true, sku: true, unit: true }
+                                },
+                                warehouse: {
+                                    select: { id: true, name: true }
+                                }
+                            }
                         }
                     }
                 },
@@ -733,6 +756,16 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
                     include: {
                         customer: {
                             select: { id: true, name: true, nameArabic: true, phone: true, email: true }
+                        },
+                        posinvoiceitem: {
+                            include: {
+                                product: {
+                                    select: { id: true, name: true, sku: true, unit: true }
+                                },
+                                warehouse: {
+                                    select: { id: true, name: true }
+                                }
+                            }
                         }
                     }
                 },

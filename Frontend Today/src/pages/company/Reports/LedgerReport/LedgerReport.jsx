@@ -46,6 +46,114 @@ const LedgerReport = () => {
     const [hideReceipt, setHideReceipt] = useState(false);
     const [enableColors, setEnableColors] = useState(true);
 
+    // Filter Panel Options
+    const [displayWarehouse, setDisplayWarehouse] = useState(false);
+    const [displayItemDetails, setDisplayItemDetails] = useState(false);
+    const [displayNarration, setDisplayNarration] = useState(false);
+    const [displayBillDetails, setDisplayBillDetails] = useState(false);
+    const [displayRefNumber, setDisplayRefNumber] = useState(true);
+    const [displayVoucherType, setDisplayVoucherType] = useState(true);
+    const [displayRunningBalance, setDisplayRunningBalance] = useState(true);
+    const [displayContactInfo, setDisplayContactInfo] = useState(false);
+    const [displayTaxDetails, setDisplayTaxDetails] = useState(false);
+    const [displayCreatedBy, setDisplayCreatedBy] = useState(false);
+
+    // Hover details popup state
+    const [hoveredTxn, setHoveredTxn] = useState(null);
+
+    const getTransactionItems = (txn) => {
+        if (!txn) return null;
+        if (txn.invoice && txn.invoice.invoiceitem) {
+            return txn.invoice.invoiceitem.map(item => ({
+                name: item.product?.name || item.service?.name || item.description || 'Unknown Item',
+                qty: item.quantity,
+                rate: item.rate,
+                amount: item.amount,
+                warehouseName: item.warehouse?.name || '',
+                unit: item.product?.unit || '',
+                taxRate: item.taxRate || 0,
+                discount: item.discount || 0
+            }));
+        }
+        if (txn.purchaseBill && txn.purchaseBill.purchasebillitem) {
+            return txn.purchaseBill.purchasebillitem.map(item => ({
+                name: item.product?.name || item.description || 'Unknown Item',
+                qty: item.quantity,
+                rate: item.rate,
+                amount: item.amount,
+                warehouseName: item.warehouse?.name || '',
+                unit: item.product?.unit || '',
+                taxRate: item.taxRate || 0,
+                discount: item.discount || 0
+            }));
+        }
+        if (txn.posInvoice && txn.posInvoice.posinvoiceitem) {
+            return txn.posInvoice.posinvoiceitem.map(item => ({
+                name: item.product?.name || item.description || 'Unknown Item',
+                qty: item.quantity,
+                rate: item.rate,
+                amount: item.amount,
+                warehouseName: item.warehouse?.name || '',
+                unit: item.product?.unit || '',
+                taxRate: item.taxRate || 0,
+                discount: item.discount || 0
+            }));
+        }
+        return null;
+    };
+
+    const handleMouseEnter = (e, txn, title) => {
+        const items = getTransactionItems(txn);
+        if (!items || items.length === 0) return;
+
+        setHoveredTxn({
+            title,
+            items,
+            total: txn.invoice?.totalAmount || txn.purchaseBill?.totalAmount || txn.posInvoice?.totalAmount || 0,
+            x: e.clientX,
+            y: e.clientY
+        });
+    };
+
+    const handleMouseMove = (e) => {
+        if (!hoveredTxn) return;
+        setHoveredTxn(prev => prev ? {
+            ...prev,
+            x: e.clientX,
+            y: e.clientY
+        } : null);
+    };
+
+    const handleMouseLeave = () => {
+        setHoveredTxn(null);
+    };
+
+    const getPopupPosition = (x, y) => {
+        const popupWidth = 380;
+        const popupHeight = 250;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+
+        // Position offset from cursor
+        let finalX = x + 15;
+        let finalY = y + 15;
+
+        // Flip to left if screen boundary exceeded
+        if (finalX + popupWidth > windowWidth) {
+            finalX = x - popupWidth - 15;
+        }
+        // Flip to top if screen boundary exceeded
+        if (finalY + popupHeight > windowHeight) {
+            finalY = y - popupHeight - 15;
+        }
+
+        // Prevent negative values if screen is too small
+        finalX = Math.max(10, finalX);
+        finalY = Math.max(10, finalY);
+
+        return { left: `${finalX}px`, top: `${finalY}px` };
+    };
+
 
 
     // Helper to flatten COA for dropdown
@@ -165,6 +273,16 @@ const LedgerReport = () => {
         setHideInvoice(false);
         setHideReceipt(false);
         setEnableColors(true);
+        setDisplayWarehouse(false);
+        setDisplayItemDetails(false);
+        setDisplayNarration(false);
+        setDisplayBillDetails(false);
+        setDisplayRefNumber(true);
+        setDisplayVoucherType(true);
+        setDisplayRunningBalance(true);
+        setDisplayContactInfo(false);
+        setDisplayTaxDetails(false);
+        setDisplayCreatedBy(false);
         // Optionally reset account or keep it
         fetchTransactions();
     };
@@ -826,6 +944,8 @@ const LedgerReport = () => {
         return null;
     };
 
+    const activeCols = 5 + (displayWarehouse ? 1 : 0) + (displayRunningBalance ? 1 : 0) + (displayNarration ? 1 : 0);
+
     return (
         <div className="Ledger-report-page">
             <div className="Ledger-page-header">
@@ -946,6 +1066,105 @@ const LedgerReport = () => {
                 </div>
             </div>
 
+            {/* Filter Panel (Report Display Options) */}
+            <div className="Ledger-display-panel">
+                <div className="Ledger-panel-title">
+                    <span>Display Options</span>
+                </div>
+                <div className="Ledger-panel-grid">
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayWarehouse}
+                            onChange={(e) => setDisplayWarehouse(e.target.checked)}
+                        />
+                        <span>Display Warehouse</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayItemDetails}
+                            onChange={(e) => setDisplayItemDetails(e.target.checked)}
+                        />
+                        <span>Display Item Details</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayNarration}
+                            onChange={(e) => setDisplayNarration(e.target.checked)}
+                        />
+                        <span>Display Narration</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayBillDetails}
+                            onChange={(e) => setDisplayBillDetails(e.target.checked)}
+                        />
+                        <span>Display Bill Details</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayRefNumber}
+                            onChange={(e) => setDisplayRefNumber(e.target.checked)}
+                        />
+                        <span>Display Reference Number</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayVoucherType}
+                            onChange={(e) => setDisplayVoucherType(e.target.checked)}
+                        />
+                        <span>Display Voucher Type</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayRunningBalance}
+                            onChange={(e) => setDisplayRunningBalance(e.target.checked)}
+                        />
+                        <span>Display Running Balance</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayContactInfo}
+                            onChange={(e) => setDisplayContactInfo(e.target.checked)}
+                        />
+                        <span>Display Contact Information</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayTaxDetails}
+                            onChange={(e) => setDisplayTaxDetails(e.target.checked)}
+                        />
+                        <span>Display Tax Details</span>
+                    </label>
+                    <label className="Ledger-panel-checkbox-label">
+                        <input
+                            type="checkbox"
+                            className="Ledger-panel-checkbox-input"
+                            checked={displayCreatedBy}
+                            onChange={(e) => setDisplayCreatedBy(e.target.checked)}
+                        />
+                        <span>Display Created By</span>
+                    </label>
+                </div>
+            </div>
+
             {/* Transactions Table */}
             <div className="Ledger-table-card">
                 <table className="Ledger-table">
@@ -954,146 +1173,408 @@ const LedgerReport = () => {
                             <th>ACCOUNT NAME</th>
                             <th>TRANSACTION TYPE</th>
                             <th>TRANSACTION DATE</th>
+                            {displayWarehouse && <th className="text-left">WAREHOUSE</th>}
+                            {displayNarration && <th className="text-left">NARRATION</th>}
                             <th className="text-right">DEBIT</th>
                             <th className="text-right">CREDIT</th>
-                            <th className="text-right">BALANCE</th>
+                            {displayRunningBalance && <th className="text-right">BALANCE</th>}
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan="6" className="text-center p-4">Loading transactions...</td></tr>
+                            <tr><td colSpan={activeCols} className="text-center p-4">Loading transactions...</td></tr>
                         ) : groupedTransactions.length > 0 ? (
-                            groupedTransactions.map((group, index) => (
-                                <React.Fragment key={group.groupKey}>
-                                    <tr
-                                        className={group.items.length > 1 ? 'Ledger-grouped-row' : ''}
-                                        style={enableColors ? (() => {
-                                            const colorStyle = getTransactionColor(group.items && group.items[0]);
-                                            return colorStyle ? { backgroundColor: colorStyle.background } : null;
-                                        })() : null}
-                                    >
-                                        <td className="font-medium">{currentLedgerName}</td>
-                                        <td>
-                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {enableColors ? (
-                                                        (() => {
-                                                            const colorStyle = getTransactionColor(group.items && group.items[0]);
-                                                            return (
-                                                                <span
-                                                                    style={{
-                                                                        color: colorStyle ? colorStyle.color : 'inherit',
-                                                                        fontSize: '0.85rem',
-                                                                        fontWeight: '700',
-                                                                        display: 'inline-block',
-                                                                        textTransform: 'uppercase'
-                                                                    }}
-                                                                >
-                                                                    {formatVoucherType(group.typeLabel)}
-                                                                </span>
-                                                            );
-                                                        })()
-                                                    ) : (
-                                                        <span style={{ fontWeight: 500 }}>{formatVoucherType(group.typeLabel)}</span>
-                                                    )}
-                                                    {group.items.length > 1 && (
-                                                        <button
-                                                            onClick={() => toggleGroup(group.groupKey)}
-                                                            className="Ledger-expand-btn"
-                                                            style={{
-                                                                background: 'none', border: 'none', color: '#8ce311',
-                                                                cursor: 'pointer', fontSize: '0.7rem', padding: 0,
-                                                                textDecoration: 'underline font-bold'
+                            groupedTransactions.map((group, index) => {
+                                const hasItems = getTransactionItems(group.items && group.items[0]) !== null;
+                                return (
+                                    <React.Fragment key={group.groupKey}>
+                                        <tr
+                                            className={`${group.items.length > 1 ? 'Ledger-grouped-row' : ''} ${hasItems ? 'Ledger-hoverable-row' : ''}`}
+                                            style={enableColors ? (() => {
+                                                const colorStyle = getTransactionColor(group.items && group.items[0]);
+                                                return colorStyle ? { backgroundColor: colorStyle.background } : null;
+                                            })() : null}
+                                            onMouseEnter={(e) => handleMouseEnter(e, group.items && group.items[0], `${formatVoucherType(group.typeLabel)} #${group.refNo}`)}
+                                            onMouseMove={handleMouseMove}
+                                            onMouseLeave={handleMouseLeave}
+                                        >
+                                            <td className="font-medium">
+                                                {currentLedgerName}
+                                                {displayContactInfo && (() => {
+                                                    const party = group.items[0]?.invoice?.customer || group.items[0]?.receipt?.customer || group.items[0]?.posInvoice?.customer || group.items[0]?.purchaseBill?.vendor || group.items[0]?.payment?.vendor;
+                                                    if (party && (party.phone || party.email)) {
+                                                        return (
+                                                            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 'normal', marginTop: '2px' }}>
+                                                                {party.phone || ''} {party.email ? `(${party.email})` : ''}
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {displayVoucherType && (
+                                                            enableColors ? (
+                                                                (() => {
+                                                                    const colorStyle = getTransactionColor(group.items && group.items[0]);
+                                                                    return (
+                                                                        <span
+                                                                            style={{
+                                                                                color: colorStyle ? colorStyle.color : '#1e293b',
+                                                                                fontSize: '0.85rem',
+                                                                                fontWeight: '700',
+                                                                                display: 'inline-block',
+                                                                                textTransform: 'uppercase'
+                                                                            }}
+                                                                        >
+                                                                            {formatVoucherType(group.typeLabel)}
+                                                                        </span>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                <span style={{ fontWeight: 500 }}>{formatVoucherType(group.typeLabel)}</span>
+                                                            )
+                                                        )}
+                                                        {group.items.length > 1 && (
+                                                            <button
+                                                                onClick={() => toggleGroup(group.groupKey)}
+                                                                className="Ledger-expand-btn"
+                                                                style={{
+                                                                    background: 'none', border: 'none', color: '#8ce311',
+                                                                    cursor: 'pointer', fontSize: '0.7rem', padding: 0,
+                                                                    textDecoration: 'underline font-bold'
+                                                                }}
+                                                            >
+                                                                {expandedGroups[group.groupKey] ? 'Hide Sub-Transactions' : `Show Sub-Transactions (${group.items.length})`}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {displayRefNumber && group.refNo && group.refNo !== '-' && (
+                                                        <span
+                                                            style={{ fontSize: '0.75rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }}
+                                                            onClick={() => {
+                                                                if (group.refNo && group.refNo !== '-' && group.items && group.items[0]) {
+                                                                    handleVoucherRedirect(group.typeLabel, group.items[0]);
+                                                                }
                                                             }}
                                                         >
-                                                            {expandedGroups[group.groupKey] ? 'Hide Sub-Transactions' : `Show Sub-Transactions (${group.items.length})`}
-                                                        </button>
+                                                            #{group.refNo}
+                                                        </span>
                                                     )}
-                                                </div>
-                                                <span
-                                                    style={group.refNo && group.refNo !== '-' ? { fontSize: '0.75rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' } : { fontSize: '0.75rem', color: '#64748b' }}
-                                                    onClick={() => {
-                                                        if (group.refNo && group.refNo !== '-' && group.items && group.items[0]) {
-                                                            handleVoucherRedirect(group.typeLabel, group.items[0]);
-                                                        }
-                                                    }}
-                                                >
-                                                    #{group.refNo || '-'}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td>{group.date ? new Date(group.date).toLocaleDateString() : '-'}</td>
-                                        <td className="text-right">{group.totalDebit > 0 ? formatCurrency(group.totalDebit) : '-'}</td>
-                                        <td className="text-right">{group.totalCredit > 0 ? formatCurrency(group.totalCredit) : '-'}</td>
-                                        <td className="text-right font-medium">
-                                            {formatCurrency(Math.abs(group.lastBalance))} {group.lastBalance >= 0 ? 'Dr' : 'Cr'}
-                                        </td>
-                                    </tr>
-                                    {expandedGroups[group.groupKey] && group.items.length > 1 && group.items.map((item, i) => {
-                                        const colorStyle = enableColors ? getTransactionColor(item) : null;
-                                        return (
-                                            <tr
-                                                key={`${group.groupKey}-sub-${i}`}
-                                                className="Ledger-sub-row"
-                                                style={{
-                                                    backgroundColor: colorStyle ? colorStyle.background : '#f8fafc',
-                                                    fontSize: '0.85rem'
-                                                }}
-                                            >
-                                                <td style={{ paddingLeft: '2rem', color: '#64748b' }}>
-                                                    ↳ {item.partyName !== '-' ? item.partyName : (item.creditLedger?.name || item.debitLedger?.name || item.typeLabel || '-')}
-                                                </td>
-                                                <td style={{ color: '#64748b' }}>
-                                                    {enableColors ? (
-                                                        (() => {
-                                                            const cStyle = getTransactionColor(item);
+                                                    {displayBillDetails && (group.items && (group.items[0]?.invoice || group.items[0]?.purchaseBill || group.items[0]?.posInvoice)) && (
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                                                            {(() => {
+                                                                const doc = group.items[0].invoice || group.items[0].purchaseBill || group.items[0].posInvoice;
+                                                                const dueDateStr = doc.dueDate ? new Date(doc.dueDate).toLocaleDateString() : '';
+                                                                const status = doc.status || 'Paid';
+                                                                return `Status: ${status}${dueDateStr ? ` | Due: ${dueDateStr}` : ''}`;
+                                                            })()}
+                                                        </span>
+                                                    )}
+                                                    {displayTaxDetails && (() => {
+                                                        const doc = group.items[0]?.invoice || group.items[0]?.purchaseBill || group.items[0]?.posInvoice;
+                                                        if (doc && doc.taxAmount > 0) {
                                                             return (
-                                                                <span
-                                                                    style={{
-                                                                        color: cStyle ? cStyle.color : 'inherit',
-                                                                        fontSize: '0.8rem',
-                                                                        fontWeight: '700',
-                                                                        display: 'inline-block',
-                                                                        textTransform: 'uppercase'
-                                                                    }}
-                                                                >
-                                                                    {formatVoucherType(item.voucherType || group.typeLabel)}
+                                                                <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                                                                    Tax Amount: {formatCurrency(doc.taxAmount)}
                                                                 </span>
                                                             );
-                                                        })()
-                                                    ) : (
-                                                        <span style={{ fontWeight: 500 }}>{formatVoucherType(item.voucherType || group.typeLabel)}</span>
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                    {displayCreatedBy && (
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                                                            Created By: Admin
+                                                        </span>
                                                     )}
-                                                    <br />
-                                                    <span
-                                                        style={(item.refNo || group.refNo) && (item.refNo !== '-' || group.refNo !== '-') ? { fontSize: '0.7rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' } : { fontSize: '0.7rem', color: '#94a3b8' }}
-                                                        onClick={() => {
-                                                            const rNo = item.refNo || group.refNo;
-                                                            if (rNo && rNo !== '-') {
-                                                                handleVoucherRedirect(item.voucherType || group.typeLabel, item);
-                                                            }
-                                                        }}
-                                                    >
-                                                        #{item.refNo || group.refNo || '-'}
-                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td>{group.date ? new Date(group.date).toLocaleDateString() : '-'}</td>
+                                            {displayWarehouse && (
+                                                <td>
+                                                    {(() => {
+                                                        const items = getTransactionItems(group.items && group.items[0]);
+                                                        if (items && items.length > 0) {
+                                                            const uniqueWarehouses = [...new Set(items.map(i => i.warehouseName).filter(Boolean))];
+                                                            return uniqueWarehouses.join(', ') || '-';
+                                                        }
+                                                        return '-';
+                                                    })()}
                                                 </td>
-                                                <td style={{ color: '#64748b' }}>{item.dateStr ? new Date(item.dateStr).toLocaleDateString() : new Date(item.date).toLocaleDateString()}</td>
-                                                <td className="text-right">{item.debit > 0 ? formatCurrency(item.debit) : '-'}</td>
-                                                <td className="text-right">{item.credit > 0 ? formatCurrency(item.credit) : '-'}</td>
-                                                <td className="text-right" style={{ color: '#94a3b8' }}>
-                                                    {formatCurrency(Math.abs(item.balance))} {item.balance >= 0 ? 'Dr' : 'Cr'}
+                                            )}
+                                            {displayNarration && (
+                                                <td>{group.items && group.items[0]?.narration || '-'}</td>
+                                            )}
+                                            <td className="text-right">{group.totalDebit > 0 ? formatCurrency(group.totalDebit) : '-'}</td>
+                                            <td className="text-right">{group.totalCredit > 0 ? formatCurrency(group.totalCredit) : '-'}</td>
+                                            {displayRunningBalance && (
+                                                <td className="text-right font-medium">
+                                                    {formatCurrency(Math.abs(group.lastBalance))} {group.lastBalance >= 0 ? 'Dr' : 'Cr'}
+                                                </td>
+                                            )}
+                                        </tr>
+                                        {displayItemDetails && getTransactionItems(group.items && group.items[0]) && (
+                                            <tr key={`${group.groupKey}-items`} className="Ledger-items-detail-row" style={{ backgroundColor: '#f8fafc' }}>
+                                                <td colSpan={activeCols} style={{ padding: '8px 16px', borderTop: 'none' }}>
+                                                    <div style={{ padding: '12px', background: '#ffffff', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                                        <div style={{ fontWeight: '700', fontSize: '0.8rem', color: '#1e293b', marginBottom: '8px' }}>Item Details:</div>
+                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem', color: '#475569' }}>
+                                                            <thead>
+                                                                <tr style={{ borderBottom: '1px solid #cbd5e1', textAlign: 'left', fontWeight: 'bold' }}>
+                                                                    <th style={{ padding: '4px', color: '#1e293b' }}>Item Name</th>
+                                                                    <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Qty</th>
+                                                                    <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Rate</th>
+                                                                    <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Discount</th>
+                                                                    <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Tax</th>
+                                                                    <th style={{ padding: '4px', color: '#1e293b' }}>Warehouse</th>
+                                                                    <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Amount</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {getTransactionItems(group.items[0]).map((itm, itmIdx) => (
+                                                                    <tr key={itmIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                                        <td style={{ padding: '4px', fontWeight: '500', color: '#334155' }}>{itm.name}</td>
+                                                                        <td style={{ padding: '4px', textAlign: 'right' }}>{itm.qty} {itm.unit || ''}</td>
+                                                                        <td style={{ padding: '4px', textAlign: 'right' }}>{formatCurrency(itm.rate)}</td>
+                                                                        <td style={{ padding: '4px', textAlign: 'right' }}>{itm.discount > 0 ? `${itm.discount}%` : '-'}</td>
+                                                                        <td style={{ padding: '4px', textAlign: 'right' }}>{itm.taxRate > 0 ? `${itm.taxRate}%` : '-'}</td>
+                                                                        <td style={{ padding: '4px' }}>{itm.warehouseName || '-'}</td>
+                                                                        <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}>{formatCurrency(itm.amount)}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '20px', marginTop: '12px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', fontSize: '0.8rem' }}>
+                                                            {(() => {
+                                                                const doc = group.items[0]?.invoice || group.items[0]?.purchaseBill || group.items[0]?.posInvoice;
+                                                                if (!doc) return null;
+                                                                return (
+                                                                    <>
+                                                                        <div><strong>Total:</strong> {formatCurrency(doc.totalAmount)}</div>
+                                                                        <div style={{ color: '#16a34a' }}><strong>Paid:</strong> {formatCurrency(doc.paidAmount)}</div>
+                                                                        <div style={{ color: '#dc2626' }}><strong>Due:</strong> {formatCurrency(doc.balanceAmount)}</div>
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </div>
                                                 </td>
                                             </tr>
-                                        );
-                                    })}
-                                </React.Fragment>
-                            ))
+                                        )}
+                                        {expandedGroups[group.groupKey] && group.items.length > 1 && group.items.map((item, i) => {
+                                            const colorStyle = enableColors ? getTransactionColor(item) : null;
+                                            const hasSubItems = getTransactionItems(item) !== null;
+                                            return (
+                                                <React.Fragment key={`${group.groupKey}-sub-${i}`}>
+                                                    <tr
+                                                        className={`Ledger-sub-row ${hasSubItems ? 'Ledger-hoverable-row' : ''}`}
+                                                        style={{
+                                                            backgroundColor: colorStyle ? colorStyle.background : '#f8fafc',
+                                                            fontSize: '0.85rem'
+                                                        }}
+                                                        onMouseEnter={(e) => handleMouseEnter(e, item, `${formatVoucherType(item.voucherType || group.typeLabel)} #${item.refNo || group.refNo}`)}
+                                                        onMouseMove={handleMouseMove}
+                                                        onMouseLeave={handleMouseLeave}
+                                                    >
+                                                        <td style={{ paddingLeft: '2rem', color: '#64748b' }}>
+                                                            ↳ {item.partyName !== '-' ? item.partyName : (item.creditLedger?.name || item.debitLedger?.name || item.typeLabel || '-')}
+                                                            {displayContactInfo && (() => {
+                                                                const party = item.invoice?.customer || item.receipt?.customer || item.posInvoice?.customer || item.purchaseBill?.vendor || item.payment?.vendor;
+                                                                if (party && (party.phone || party.email)) {
+                                                                    return (
+                                                                        <div style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block', marginTop: '2px', paddingLeft: '1rem' }}>
+                                                                            {party.phone || ''} {party.email ? `(${party.email})` : ''}
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()}
+                                                        </td>
+                                                        <td style={{ color: '#64748b' }}>
+                                                            {displayVoucherType && (
+                                                                enableColors ? (
+                                                                    (() => {
+                                                                        const cStyle = getTransactionColor(item);
+                                                                        return (
+                                                                            <span
+                                                                                style={{
+                                                                                    color: cStyle ? cStyle.color : '#1e293b',
+                                                                                    fontSize: '0.8rem',
+                                                                                    fontWeight: '700',
+                                                                                    display: 'inline-block',
+                                                                                    textTransform: 'uppercase'
+                                                                                }}
+                                                                            >
+                                                                                {formatVoucherType(item.voucherType || group.typeLabel)}
+                                                                            </span>
+                                                                        );
+                                                                    })()
+                                                                ) : (
+                                                                    <span style={{ fontWeight: 500 }}>{formatVoucherType(item.voucherType || group.typeLabel)}</span>
+                                                                )
+                                                            )}
+                                                            {displayVoucherType && displayRefNumber && <br />}
+                                                            {displayRefNumber && (item.refNo || group.refNo) && (item.refNo !== '-' || group.refNo !== '-') && (
+                                                                <span
+                                                                    style={{ fontSize: '0.7rem', color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }}
+                                                                    onClick={() => {
+                                                                        const rNo = item.refNo || group.refNo;
+                                                                        if (rNo && rNo !== '-') {
+                                                                            handleVoucherRedirect(item.voucherType || group.typeLabel, item);
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    #{item.refNo || group.refNo}
+                                                                </span>
+                                                            )}
+                                                            {displayBillDetails && (item.invoice || item.purchaseBill || item.posInvoice) && (
+                                                                <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block', marginTop: '2px' }}>
+                                                                    {(() => {
+                                                                        const doc = item.invoice || item.purchaseBill || item.posInvoice;
+                                                                        const dueDateStr = doc.dueDate ? new Date(doc.dueDate).toLocaleDateString() : '';
+                                                                        const status = doc.status || 'Paid';
+                                                                        return `Status: ${status}${dueDateStr ? ` | Due: ${dueDateStr}` : ''}`;
+                                                                    })()}
+                                                                </span>
+                                                            )}
+                                                            {displayTaxDetails && (() => {
+                                                                const doc = item.invoice || item.purchaseBill || item.posInvoice;
+                                                                if (doc && doc.taxAmount > 0) {
+                                                                    return (
+                                                                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block', marginTop: '2px' }}>
+                                                                            Tax Amount: {formatCurrency(doc.taxAmount)}
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()}
+                                                            {displayCreatedBy && (
+                                                                <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block', marginTop: '2px' }}>
+                                                                    Created By: Admin
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ color: '#64748b' }}>{item.dateStr ? new Date(item.dateStr).toLocaleDateString() : new Date(item.date).toLocaleDateString()}</td>
+                                                        {displayWarehouse && (
+                                                            <td style={{ color: '#64748b' }}>
+                                                                {(() => {
+                                                                    const items = getTransactionItems(item);
+                                                                    if (items && items.length > 0) {
+                                                                        const uniqueWarehouses = [...new Set(items.map(i => i.warehouseName).filter(Boolean))];
+                                                                        return uniqueWarehouses.join(', ') || '-';
+                                                                    }
+                                                                    return '-';
+                                                                })()}
+                                                            </td>
+                                                        )}
+                                                        {displayNarration && (
+                                                            <td style={{ color: '#64748b' }}>{item.narration || '-'}</td>
+                                                        )}
+                                                        <td className="text-right">{item.debit > 0 ? formatCurrency(item.debit) : '-'}</td>
+                                                        <td className="text-right">{item.credit > 0 ? formatCurrency(item.credit) : '-'}</td>
+                                                        {displayRunningBalance && (
+                                                            <td className="text-right" style={{ color: '#94a3b8' }}>
+                                                                {formatCurrency(Math.abs(item.balance))} {item.balance >= 0 ? 'Dr' : 'Cr'}
+                                                            </td>
+                                                        )}
+                                                    </tr>
+                                                    {displayItemDetails && getTransactionItems(item) && (
+                                                        <tr key={`${group.groupKey}-sub-${i}-items`} className="Ledger-items-detail-row" style={{ backgroundColor: '#f8fafc' }}>
+                                                            <td colSpan={activeCols} style={{ padding: '8px 16px', borderTop: 'none' }}>
+                                                                <div style={{ padding: '12px', background: '#ffffff', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                                                    <div style={{ fontWeight: '700', fontSize: '0.8rem', color: '#1e293b', marginBottom: '8px' }}>Item Details:</div>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem', color: '#475569' }}>
+                                                                        <thead>
+                                                                            <tr style={{ borderBottom: '1px solid #cbd5e1', textAlign: 'left', fontWeight: 'bold' }}>
+                                                                                <th style={{ padding: '4px', color: '#1e293b' }}>Item Name</th>
+                                                                                <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Qty</th>
+                                                                                <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Rate</th>
+                                                                                <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Discount</th>
+                                                                                <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Tax</th>
+                                                                                <th style={{ padding: '4px', color: '#1e293b' }}>Warehouse</th>
+                                                                                <th style={{ padding: '4px', textAlign: 'right', color: '#1e293b' }}>Amount</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {getTransactionItems(item).map((itm, itmIdx) => (
+                                                                                <tr key={itmIdx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                                                    <td style={{ padding: '4px', fontWeight: '500', color: '#334155' }}>{itm.name}</td>
+                                                                                    <td style={{ padding: '4px', textAlign: 'right' }}>{itm.qty} {itm.unit || ''}</td>
+                                                                                    <td style={{ padding: '4px', textAlign: 'right' }}>{formatCurrency(itm.rate)}</td>
+                                                                                    <td style={{ padding: '4px', textAlign: 'right' }}>{itm.discount > 0 ? `${itm.discount}%` : '-'}</td>
+                                                                                    <td style={{ padding: '4px', textAlign: 'right' }}>{itm.taxRate > 0 ? `${itm.taxRate}%` : '-'}</td>
+                                                                                    <td style={{ padding: '4px' }}>{itm.warehouseName || '-'}</td>
+                                                                                    <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold', color: '#0f172a' }}>{formatCurrency(itm.amount)}</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '20px', marginTop: '12px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', fontSize: '0.8rem' }}>
+                                                                        {(() => {
+                                                                            const doc = item.invoice || item.purchaseBill || item.posInvoice;
+                                                                            if (!doc) return null;
+                                                                            return (
+                                                                                <>
+                                                                                    <div><strong>Total:</strong> {formatCurrency(doc.totalAmount)}</div>
+                                                                                    <div style={{ color: '#16a34a' }}><strong>Paid:</strong> {formatCurrency(doc.paidAmount)}</div>
+                                                                                    <div style={{ color: '#dc2626' }}><strong>Due:</strong> {formatCurrency(doc.balanceAmount)}</div>
+                                                                                </>
+                                                                            );
+                                                                        })()}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </React.Fragment>
+                                );
+                            })
                         ) : (
-                            <tr><td colSpan="6" className="text-center p-4">No transactions found</td></tr>
+                            <tr><td colSpan={activeCols} className="text-center p-4">No transactions found</td></tr>
                         )}
                     </tbody>
                 </table>
             </div>
+
+            {hoveredTxn && (
+                <div
+                    className="Ledger-hover-popup visible"
+                    style={getPopupPosition(hoveredTxn.x, hoveredTxn.y)}
+                >
+                    <div className="Ledger-popup-header">
+                        <span>{hoveredTxn.title}</span>
+                    </div>
+                    <table className="Ledger-popup-table">
+                        <thead>
+                            <tr>
+                                <th>Maal / Items</th>
+                                <th className="text-right">Qty</th>
+                                <th className="text-right">Rate</th>
+                                <th className="text-right">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {hoveredTxn.items.map((item, idx) => (
+                                <tr key={idx}>
+                                    <td>{item.name}</td>
+                                    <td className="text-right">{item.qty}</td>
+                                    <td className="text-right">{formatCurrency(item.rate)}</td>
+                                    <td className="text-right">{formatCurrency(item.amount)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <div className="Ledger-popup-total">
+                        <span>Total Amount:</span>
+                        <span>{formatCurrency(hoveredTxn.total)}</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

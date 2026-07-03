@@ -30,6 +30,7 @@ import categoryService from '../../../../services/categoryService';
 import uomService from '../../../../services/uomService';
 import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
 import { Upload, Loader2 } from 'lucide-react';
+import axiosInstance from '../../../../api/axiosInstance';
 
 const DeliveryChallan = () => {
     const { hasPermission } = useContext(AuthContext);
@@ -63,13 +64,46 @@ const DeliveryChallan = () => {
     // Inline Modals States
     const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
     const [customerFormData, setCustomerFormData] = useState({
-        name: '', email: '', phone: '', company: '', gstin: '',
-        billingAddress: '', billingCity: '', billingState: '', billingZip: '', billingCountry: '',
-        shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', shippingCountry: '',
-        accountBalance: '', notes: '', profileImage: ''
+        name: '',
+        nameArabic: '',
+        companyName: '',
+        companyLocation: '',
+        profileImage: '',
+        anyFile: '',
+        accountType: 'Credit',
+        balanceType: 'Debit',
+        accountBalance: 0,
+        creationDate: new Date().toISOString().split('T')[0],
+        bankAccountNumber: '',
+        bankIFSC: '',
+        bankNameBranch: '',
+        phone: '',
+        email: '',
+        creditPeriod: '',
+        gstNumber: '',
+        gstEnabled: false,
+        billingName: '',
+        billingPhone: '',
+        billingAddress: '',
+        billingCity: '',
+        billingState: '',
+        billingCountry: '',
+        billingZipCode: '',
+        shippingSameAsBilling: false,
+        shippingName: '',
+        shippingPhone: '',
+        shippingAddress: '',
+        shippingCity: '',
+        shippingState: '',
+        shippingCountry: '',
+        shippingZipCode: '',
+        shippingAddresses: []
     });
     const [uploadingAnyFile, setUploadingAnyFile] = useState(false);
+    const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
+    const [customerSubmitting, setCustomerSubmitting] = useState(false);
     const profileImageRef = useRef();
+    const anyFileRef = useRef();
 
     const [showAddProductModal, setShowAddProductModal] = useState(false);
     const [productFormData, setProductFormData] = useState({
@@ -222,85 +256,206 @@ const DeliveryChallan = () => {
 
     // Inline Customer Handlers
     const handleCustomerInputChange = (e) => {
-        const { name, value } = e.target;
-        if (name === 'phone') {
-            const cleaned = value.replace(/\D/g, '');
-            setCustomerFormData(prev => ({ ...prev, [name]: cleaned }));
-        } else {
-            setCustomerFormData(prev => ({ ...prev, [name]: value }));
-        }
+        const { name, value, type, checked } = e.target;
+
+        setCustomerFormData(prev => {
+            let processedValue = type === 'checkbox' ? checked : value;
+
+            if (type !== 'checkbox' && typeof processedValue === 'string') {
+                if (name === 'phone' || name === 'billingPhone' || name === 'shippingPhone') {
+                    processedValue = processedValue.replace(/\D/g, '');
+                } else if (name === 'accountBalance') {
+                    processedValue = processedValue.replace(/-/g, '');
+                    if (processedValue !== '') {
+                        const parsed = parseFloat(processedValue);
+                        if (!isNaN(parsed) && parsed < 0) {
+                            processedValue = '0';
+                        }
+                    }
+                }
+            }
+
+            const newData = {
+                ...prev,
+                [name]: processedValue
+            };
+
+            if (name === 'shippingSameAsBilling' && checked) {
+                newData.shippingName = prev.billingName;
+                newData.shippingPhone = prev.billingPhone;
+                newData.shippingAddress = prev.billingAddress;
+                newData.shippingCity = prev.billingCity;
+                newData.shippingState = prev.billingState;
+                newData.shippingCountry = prev.billingCountry;
+                newData.shippingZipCode = prev.billingZipCode;
+            }
+
+            return newData;
+        });
     };
 
-    const handleCustomerImageUpload = async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            try {
-                setUploadingAnyFile(true);
-                toast.loading('Uploading profile image...', { id: 'cust-image-upload' });
-                const url = await uploadToCloudinary(file);
-                setCustomerFormData(prev => ({ ...prev, profileImage: url }));
-                toast.success('Image uploaded successfully', { id: 'cust-image-upload' });
-            } catch (error) {
-                console.error(error);
-                toast.error('Failed to upload image', { id: 'cust-image-upload' });
-            } finally {
-                setUploadingAnyFile(false);
+    const handleCustomerShippingAddressChange = (index, field, value) => {
+        setCustomerFormData(prev => {
+            const newAddresses = [...prev.shippingAddresses];
+            let processedValue = value;
+            if (field === 'phone' && typeof value === 'string') {
+                processedValue = value.replace(/\D/g, '');
             }
+            newAddresses[index] = { ...newAddresses[index], [field]: processedValue };
+            return { ...prev, shippingAddresses: newAddresses };
+        });
+    };
+
+    const addCustomerShippingAddress = () => {
+        setCustomerFormData(prev => ({
+            ...prev,
+            shippingAddresses: [
+                ...prev.shippingAddresses,
+                { name: '', phone: '', address: '', city: '', state: '', country: '', zipCode: '', isDefault: false }
+            ]
+        }));
+    };
+
+    const removeCustomerShippingAddress = (index) => {
+        setCustomerFormData(prev => ({
+            ...prev,
+            shippingAddresses: prev.shippingAddresses.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleCustomerFileUpload = async (file, field, folder) => {
+        if (!file) return;
+        const setUploading = field === 'profileImage' ? setUploadingProfileImage : setUploadingAnyFile;
+        setUploading(true);
+        try {
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', file);
+            const res = await axiosInstance.post(`/upload?folder=${folder}`, formDataUpload, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            if (res.data.success) {
+                setCustomerFormData(prev => ({ ...prev, [field]: res.data.url }));
+                toast.success(`${field === 'profileImage' ? 'Profile image' : 'File'} uploaded!`);
+            }
+        } catch (err) {
+            toast.error('Upload failed: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setUploading(false);
         }
     };
 
     const handleCustomerSubmit = async (e) => {
         if (e && e.preventDefault) e.preventDefault();
-        if (!customerFormData.name || !customerFormData.phone) {
-            toast.error('Name and Phone are required');
+        if (!customerFormData.name || !customerFormData.email) {
+            toast.error('Please fill in required fields (Name and Email)');
             return;
         }
-        try {
-            const companyId = GetCompanyId();
-            const payload = {
-                ...customerFormData,
-                accountBalance: parseFloat(customerFormData.accountBalance) || 0,
-                companyId: parseInt(companyId)
+
+        setCustomerSubmitting(true);
+
+        const payload = { ...customerFormData };
+        let shippingAddresses = [...customerFormData.shippingAddresses];
+
+        if (customerFormData.shippingSameAsBilling) {
+            const billingAsShipping = {
+                name: customerFormData.billingName || customerFormData.name,
+                phone: customerFormData.billingPhone || customerFormData.phone,
+                address: customerFormData.billingAddress,
+                city: customerFormData.billingCity,
+                state: customerFormData.billingState,
+                country: customerFormData.billingCountry,
+                zipCode: customerFormData.billingZipCode,
+                isDefault: true
             };
-            const res = await customerServiceFromServices.createCustomer(payload);
-            if (res.success) {
-                toast.success('Customer added successfully');
-                setShowAddCustomerModal(false);
-                setCustomerFormData({
-                    name: '', email: '', phone: '', company: '', gstin: '',
-                    billingAddress: '', billingCity: '', billingState: '', billingZip: '', billingCountry: '',
-                    shippingAddress: '', shippingCity: '', shippingState: '', shippingZip: '', shippingCountry: '',
-                    accountBalance: '', notes: '', profileImage: ''
-                });
-                // Reload list of customers
-                const custRes = await customerService.getAll(companyId);
-                if (custRes.data?.success) {
-                    setCustomers(custRes.data.data);
-                }
+            shippingAddresses = [billingAsShipping, ...customerFormData.shippingAddresses];
+        }
+
+        payload.shippingAddresses = shippingAddresses;
+        const companyId = GetCompanyId();
+        payload.companyId = parseInt(companyId);
+
+        try {
+            const response = await customerServiceFromServices.createCustomer(payload);
+            const success = response.success || (response.data && response.success !== false);
+            
+            if (success) {
+                toast.success('Customer added successfully!');
+                const c = response.data?.customer || response.data || response;
+                
                 // Pre-select newly created customer
-                if (res.data?.id) {
-                    const cId = res.data.id;
-                    setCustomerId(cId);
-                    const c = res.data;
+                if (c && c.id) {
+                    setCustomerId(c.id);
                     setCustomerDetails({
                         address: c.shippingAddress || c.billingAddress || '',
                         email: c.email || '',
                         phone: c.phone || '',
                         city: c.shippingCity || c.billingCity || '',
                         state: c.shippingState || c.billingState || '',
-                        zipCode: c.shippingZip || c.billingZip || ''
+                        zipCode: c.shippingZip || c.billingZip || c.shippingZipCode || c.billingZipCode || ''
                     });
                     setBillingDetails({
                         address: c.billingAddress || '',
                         city: c.billingCity || '',
                         state: c.billingState || '',
-                        zipCode: c.billingZip || ''
+                        zipCode: c.billingZip || c.billingZipCode || ''
                     });
                 }
+
+                // Reload list of customers
+                const custRes = await customerService.getAll(companyId);
+                if (custRes.data?.success) {
+                    setCustomers(custRes.data.data);
+                } else if (custRes.data) {
+                    setCustomers(custRes.data);
+                }
+
+                setShowAddCustomerModal(false);
+
+                // Reset customer form
+                setCustomerFormData({
+                    name: '',
+                    nameArabic: '',
+                    companyName: '',
+                    companyLocation: '',
+                    profileImage: '',
+                    anyFile: '',
+                    accountType: 'Credit',
+                    balanceType: 'Debit',
+                    accountBalance: 0,
+                    creationDate: new Date().toISOString().split('T')[0],
+                    bankAccountNumber: '',
+                    bankIFSC: '',
+                    bankNameBranch: '',
+                    phone: '',
+                    email: '',
+                    creditPeriod: '',
+                    gstNumber: '',
+                    gstEnabled: false,
+                    billingName: '',
+                    billingPhone: '',
+                    billingAddress: '',
+                    billingCity: '',
+                    billingState: '',
+                    billingCountry: '',
+                    billingZipCode: '',
+                    shippingSameAsBilling: false,
+                    shippingName: '',
+                    shippingPhone: '',
+                    shippingAddress: '',
+                    shippingCity: '',
+                    shippingState: '',
+                    shippingCountry: '',
+                    shippingZipCode: '',
+                    shippingAddresses: []
+                });
+            } else {
+                toast.error(response.message || 'Failed to create customer');
             }
         } catch (error) {
-            console.error('Error adding customer:', error);
-            toast.error(error.response?.data?.message || 'Failed to add customer');
+            console.error('Error saving customer:', error);
+            toast.error(error.message || 'Failed to save customer');
+        } finally {
+            setCustomerSubmitting(false);
         }
     };
 
@@ -586,7 +741,7 @@ const DeliveryChallan = () => {
             });
 
         if (productItems.length === 0) {
-            toast.warning("This Sales Order contains no physical products to deliver.");
+            toast.error("This Sales Order contains no physical products to deliver.");
             return;
         }
 
@@ -725,47 +880,47 @@ const DeliveryChallan = () => {
                     });
                 }
 
-                 let fieldValues = {};
-                 if (challan.customFields) {
-                     try {
-                         fieldValues = typeof challan.customFields === 'string'
-                             ? JSON.parse(challan.customFields)
-                             : challan.customFields;
-                     } catch (e) {
-                         console.error('Error parsing custom fields on edit:', e);
-                     }
-                 }
-                 setCustomFieldValues(fieldValues);
+                let fieldValues = {};
+                if (challan.customFields) {
+                    try {
+                        fieldValues = typeof challan.customFields === 'string'
+                            ? JSON.parse(challan.customFields)
+                            : challan.customFields;
+                    } catch (e) {
+                        console.error('Error parsing custom fields on edit:', e);
+                    }
+                }
+                setCustomFieldValues(fieldValues);
 
-                 setChallanMeta({
-                      challanNo: challan.challanNumber,
-                      manualNo: challan.manualReference || '',
-                      date: new Date(challan.date).toISOString().split('T')[0],
-                      carrier: challan.carrier || '',
-                      vehicleNo: challan.vehicleNo || '',
-                      transportNote: challan.transportNote || '',
-                      remarks: challan.remarks || '',
-                      deliveryPersonName: fieldValues.deliveryPersonName || '',
-                      deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
-                      deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
-                  });
+                setChallanMeta({
+                    challanNo: challan.challanNumber,
+                    manualNo: challan.manualReference || '',
+                    date: new Date(challan.date).toISOString().split('T')[0],
+                    carrier: challan.carrier || '',
+                    vehicleNo: challan.vehicleNo || '',
+                    transportNote: challan.transportNote || '',
+                    remarks: challan.remarks || '',
+                    deliveryPersonName: fieldValues.deliveryPersonName || '',
+                    deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
+                    deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
+                });
 
-                  if (challan.salesorder) {
-                      setSelectedOrder(challan.salesorder);
-                  }
+                if (challan.salesorder) {
+                    setSelectedOrder(challan.salesorder);
+                }
 
-                  setItems((challan.deliverychallanitem || challan.items || []).map(item => ({
-                      id: item.id,
-                      productId: item.productId,
-                      warehouseId: item.warehouseId,
-                      description: item.description || '',
-                      ordered: item.quantity,
-                      delivered: item.quantity,
-                      unit: item.product?.uom?.unitName || item.product?.salesUom?.unitName || item.product?.unit || 'pcs'
-                  })));
+                setItems((challan.deliverychallanitem || challan.items || []).map(item => ({
+                    id: item.id,
+                    productId: item.productId,
+                    warehouseId: item.warehouseId,
+                    description: item.description || '',
+                    ordered: item.quantity,
+                    delivered: item.quantity,
+                    unit: item.product?.uom?.unitName || item.product?.salesUom?.unitName || item.product?.unit || 'pcs'
+                })));
 
-                 setActiveModalStep(2);
-                 setShowAddModal(true);
+                setActiveModalStep(2);
+                setShowAddModal(true);
             }
         } catch (error) {
             console.error('Error fetching challan for edit:', error);
@@ -871,11 +1026,43 @@ const DeliveryChallan = () => {
     const handleSave = async (allowDuplicate = false) => {
         try {
             if (!customerId) {
-                toast.warning("Please select a customer.");
+                toast.error("Please select a customer.");
+                return;
+            }
+            if (!challanMeta.challanNo || !challanMeta.challanNo.trim()) {
+                toast.error("Please enter a Challan Number.");
+                return;
+            }
+            if (!challanMeta.date) {
+                toast.error("Please select a Date.");
+                return;
+            }
+            if (!challanMeta.vehicleNo || !challanMeta.vehicleNo.trim()) {
+                toast.error("Please enter a Vehicle Number.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonName || !challanMeta.deliveryPersonName.trim()) {
+                toast.error("Please enter the Delivery Person Name.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonMobile || !challanMeta.deliveryPersonMobile.trim()) {
+                toast.error("Please enter the Delivery Person Mobile.");
                 return;
             }
             if (items.some(i => !i.productId || !i.warehouseId)) {
                 toast.error("All items must have a product and a warehouse");
+                return;
+            }
+            if (!challanMeta.deliveryPersonName?.trim()) {
+                toast.warning("Delivery Person Name is required.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonMobile?.trim()) {
+                toast.warning("Delivery Person Mobile is required.");
+                return;
+            }
+            if (!challanMeta.deliveryPersonEmail?.trim()) {
+                toast.warning("Delivery Person Email is required.");
                 return;
             }
 
@@ -1503,13 +1690,14 @@ const DeliveryChallan = () => {
 
                                                 <div className="Zirak-DC-meta-fields-col">
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Challan No.</label>
+                                                        <label>Challan No. <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input
                                                             type="text"
                                                             value={challanMeta.challanNo || ''}
                                                             onChange={(e) => setChallanMeta({ ...challanMeta, challanNo: e.target.value })}
                                                             disabled={isViewMode || !!editId}
                                                             className={`Zirak-DC-meta-input ${isViewMode || editId ? 'Zirak-DC-disabled' : ''}`}
+                                                            required
                                                         />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
@@ -1519,32 +1707,36 @@ const DeliveryChallan = () => {
                                                             className="Zirak-DC-meta-input" />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Date</label>
+                                                        <label>Date <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="date"
                                                             value={challanMeta.date} onChange={(e) => setChallanMeta({ ...challanMeta, date: e.target.value })}
-                                                            className="Zirak-DC-meta-input" />
+                                                            className="Zirak-DC-meta-input"
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Vehicle No</label>
+                                                        <label>Vehicle No <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="text"
                                                             value={challanMeta.vehicleNo} onChange={(e) => setChallanMeta({ ...challanMeta, vehicleNo: e.target.value })}
-                                                            className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999' />
+                                                            className="Zirak-DC-meta-input font-mono" placeholder='MH-12-XX-9999'
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Name</label>
+                                                        <label>Del. Person Name <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="text"
                                                             value={challanMeta.deliveryPersonName || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonName: e.target.value })}
-                                                            className="Zirak-DC-meta-input" placeholder='Enter name' />
+                                                            className="Zirak-DC-meta-input" placeholder='Enter name'
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Mobile</label>
+                                                        <label>Del. Person Mobile <span style={{ color: '#ef4444' }}>*</span></label>
                                                         <input type="text"
                                                             value={challanMeta.deliveryPersonMobile || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonMobile: e.target.value })}
-                                                            className="Zirak-DC-meta-input" placeholder='Enter mobile' />
+                                                            className="Zirak-DC-meta-input" placeholder='Enter mobile'
+                                                            required />
                                                     </div>
                                                     <div className="Zirak-DC-meta-row">
-                                                        <label>Del. Person Email</label>
-                                                        <input type="text"
+                                                        <label>Del. Person Email <span style={{ color: 'red' }}>*</span></label>
+                                                        <input type="text" required
                                                             value={challanMeta.deliveryPersonEmail || ''} onChange={(e) => setChallanMeta({ ...challanMeta, deliveryPersonEmail: e.target.value })}
                                                             className="Zirak-DC-meta-input" placeholder='Enter email' />
                                                     </div>
@@ -1552,7 +1744,7 @@ const DeliveryChallan = () => {
                                             </div>
 
                                             <div className="Zirak-DC-customer-selection-area">
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                                                     <label className="Zirak-DC-form-label-sm font-bold Zirak-DC-text-slate-700">Customer</label>
                                                     {!selectedOrder && (
                                                         <button
@@ -1900,207 +2092,557 @@ const DeliveryChallan = () => {
                     </div>
                 </div>
             )}
-            {/* Add New Customer Modal */}
+            {/* Full Add Customer Modal */}
             {showAddCustomerModal && (
                 <div className="Customers-modal-overlay" style={{ zIndex: 20000 }}>
-                    <div className="Customers-modal-content" style={{ textAlign: 'left' }}>
+                    <div className="Customers-modal-content Customers-modal-large" style={{ textAlign: 'left' }}>
                         <div className="Customers-modal-header">
-                            <h2 className="Customers-modal-title">Add New Customer</h2>
+                            <h2 className="Customers-modal-title">Add Customer</h2>
                             <button className="Customers-close-btn" onClick={() => setShowAddCustomerModal(false)}>×</button>
                         </div>
-                        <form onSubmit={handleCustomerSubmit}>
-                            <div className="Customers-modal-body">
-                                <div className="Customers-form-section">
-                                    <h3>Basic Information</h3>
-                                    <div className="Customers-form-row">
-                                        <div className="Customers-form-group Customers-half-width">
-                                            <label className="Customers-form-label">Full Name <span className="Customers-text-red">*</span></label>
+
+                        <div className="Customers-modal-body">
+                            {/* Basic Information */}
+                            <div className="Customers-form-section" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+                                <h3 className="Customers-section-subtitle">Basic Information</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Name (English) <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="name"
+                                            value={customerFormData.name}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Name"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Name (Arabic)</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="nameArabic"
+                                            value={customerFormData.nameArabic}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Name (Arabic)"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Company Name</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="companyName"
+                                            value={customerFormData.companyName}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter company name"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-google-loc">
+                                        <label className="Customers-form-label">Company Google Location</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="companyLocation"
+                                            value={customerFormData.companyLocation}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Google Maps link"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* File Uploads */}
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-profile-img">
+                                        <label className="Customers-form-label">Profile Image</label>
+                                        {customerFormData.profileImage ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <img
+                                                    src={customerFormData.profileImage}
+                                                    alt="Profile"
+                                                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerFormData(prev => ({ ...prev, profileImage: '' }))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                >
+                                                    x Remove
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <input
+                                            type="file"
+                                            ref={profileImageRef}
+                                            accept="image/jpeg,image/png,image/jpg"
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleCustomerFileUpload(e.target.files[0], 'profileImage', 'customers')}
+                                        />
+                                        <div className="Customers-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                            <div className="Customers-file-label">
+                                                <span className="Customers-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
+                                                <span className="Customers-file-name">{customerFormData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
+                                            </div>
+                                        </div>
+                                        <span className="Customers-file-note">JPEG, PNG or JPG (max 5MB)</span>
+                                    </div>
+                                    <div className="Customers-form-group Customers-any-file">
+                                        <label className="Customers-form-label">Any File</label>
+                                        {customerFormData.anyFile ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                <a
+                                                    href={customerFormData.anyFile}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
+                                                >
+                                                    View File
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerFormData(prev => ({ ...prev, anyFile: '' }))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                >
+                                                    x Remove
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <input
+                                            type="file"
+                                            ref={anyFileRef}
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleCustomerFileUpload(e.target.files[0], 'anyFile', 'customers')}
+                                        />
+                                        <div className="Customers-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                            <div className="Customers-file-label">
+                                                <span className="Customers-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
+                                                <span className="Customers-file-name">{customerFormData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                            </div>
+                                        </div>
+                                        <span className="Customers-file-note">Any file type. Max 10MB</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Account Information */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Account Information</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Customer Type <span className="Customers-text-red">*</span></label>
+                                        <select
+                                            className="Customers-form-select"
+                                            name="accountType"
+                                            value={customerFormData.accountType || 'Credit'}
+                                            onChange={handleCustomerInputChange}
+                                        >
+                                            <option value="Credit">Credit Customer</option>
+                                            <option value="Cash">Cash Customer</option>
+                                        </select>
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Balance Type</label>
+                                        <select
+                                            className="Customers-form-select"
+                                            name="balanceType"
+                                            value={customerFormData.balanceType}
+                                            onChange={handleCustomerInputChange}
+                                        >
+                                            <option value="Debit">Debit</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <div className="Customers-input-with-note">
+                                            <label className="Customers-form-label">Account Name <span className="Customers-text-red">*</span></label>
                                             <input
                                                 type="text"
                                                 className="Customers-form-input"
-                                                name="name"
                                                 value={customerFormData.name}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="Enter Full Name"
-                                                required
+                                                readOnly
+                                                disabled
+                                                style={{ backgroundColor: '#f3f4f6' }}
                                             />
-                                        </div>
-                                        <div className="Customers-form-group Customers-half-width">
-                                            <label className="Customers-form-label">Company Name</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="company"
-                                                value={customerFormData.company}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="Enter Company Name"
-                                            />
+                                            <span className="Customers-input-note">This will auto-fill from selection above</span>
                                         </div>
                                     </div>
-
-                                    <div className="Customers-form-row">
-                                        <div className="Customers-form-group Customers-half-width">
-                                            <label className="Customers-form-label">Email Address</label>
-                                            <input
-                                                type="email"
-                                                className="Customers-form-input"
-                                                name="email"
-                                                value={customerFormData.email}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="Enter Email Address"
-                                            />
-                                        </div>
-                                        <div className="Customers-form-group Customers-half-width">
-                                            <label className="Customers-form-label">Phone <span className="Customers-text-red">*</span></label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="phone"
-                                                value={customerFormData.phone}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="Enter Phone"
-                                                required
-                                            />
-                                        </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Account Balance <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="number"
+                                            className="Customers-form-input"
+                                            name="accountBalance"
+                                            value={customerFormData.accountBalance}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="0.00"
+                                            min="0"
+                                            onKeyDown={(e) => {
+                                                if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                        />
                                     </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Creation Date <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="date"
+                                            className="Customers-form-input"
+                                            name="creationDate"
+                                            value={customerFormData.creationDate}
+                                            onChange={handleCustomerInputChange}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
 
-                                    <div className="Customers-form-row">
-                                        <div className="Customers-form-group Customers-half-width">
-                                            <label className="Customers-form-label">GSTIN</label>
+                            {/* Bank Details */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Bank Details</h3>
+                                <div className="Customers-form-row Customers-three-col">
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank Account Number</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankAccountNumber"
+                                            value={customerFormData.bankAccountNumber}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank account number"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank IFSC</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankIFSC"
+                                            value={customerFormData.bankIFSC}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank IFSC"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank Name & Branch</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankNameBranch"
+                                            value={customerFormData.bankNameBranch}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank name & branch"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Contact & GST */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Contact & Status</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Phone <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="phone"
+                                            value={customerFormData.phone}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Phone"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Email <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="email"
+                                            className="Customers-form-input"
+                                            name="email"
+                                            value={customerFormData.email}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Email"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Credit Period (days)</label>
+                                        <input
+                                            type="number"
+                                            className="Customers-form-input"
+                                            name="creditPeriod"
+                                            value={customerFormData.creditPeriod}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter credit period"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row" style={{ alignItems: 'center' }}>
+                                    <label className="Customers-switch" style={{ marginRight: '10px' }}>
+                                        <input
+                                            type="checkbox"
+                                            name="gstEnabled"
+                                            checked={customerFormData.gstEnabled}
+                                            onChange={handleCustomerInputChange}
+                                        />
+                                        <span className="Customers-slider Customers-round"></span>
+                                    </label>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Enable GST</span>
+
+                                    {customerFormData.gstEnabled && (
+                                        <div className="Customers-form-group" style={{ marginLeft: '2rem', flex: 1 }}>
                                             <input
                                                 type="text"
                                                 className="Customers-form-input"
-                                                name="gstin"
-                                                value={customerFormData.gstin}
+                                                name="gstNumber"
+                                                value={customerFormData.gstNumber}
                                                 onChange={handleCustomerInputChange}
                                                 placeholder="Enter GSTIN"
                                             />
                                         </div>
-                                        <div className="Customers-form-group Customers-half-width">
-                                            <label className="Customers-form-label">Account Balance</label>
-                                            <input
-                                                type="number"
-                                                className="Customers-form-input"
-                                                name="accountBalance"
-                                                value={customerFormData.accountBalance}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="0.00"
-                                                min="0"
-                                                onKeyDown={(e) => {
-                                                    if (e.key === '-' || e.key === 'e' || e.key === 'E') {
-                                                        e.preventDefault();
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
+                            </div>
 
-                                <div className="Customers-form-section">
-                                    <h3>Billing Address</h3>
-                                    <div className="Customers-form-group">
-                                        <label className="Customers-form-label">Street Address</label>
-                                        <input
-                                            type="text"
-                                            className="Customers-form-input"
-                                            name="billingAddress"
-                                            value={customerFormData.billingAddress}
-                                            onChange={handleCustomerInputChange}
-                                            placeholder="Street address"
-                                        />
+                            {/* Addresses */}
+                            <div className="Customers-form-section">
+                                <div className="Customers-form-row">
+                                    {/* Billing Address */}
+                                    <div style={{ flex: 1 }}>
+                                        <h3 className="Customers-section-subtitle">Billing Address</h3>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Name</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingName"
+                                                value={customerFormData.billingName}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Name"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Phone</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingPhone"
+                                                value={customerFormData.billingPhone}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Phone"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Address</label>
+                                            <textarea
+                                                className="Customers-form-textarea"
+                                                name="billingAddress"
+                                                value={customerFormData.billingAddress}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Address"
+                                                rows="3"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-row">
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingCity"
+                                                    value={customerFormData.billingCity}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="City"
+                                                />
+                                            </div>
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingState"
+                                                    value={customerFormData.billingState}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="State"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="Customers-form-row">
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingCountry"
+                                                    value={customerFormData.billingCountry}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="Country"
+                                                />
+                                            </div>
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingZipCode"
+                                                    value={customerFormData.billingZipCode}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="Zip Code"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="Customers-form-row">
-                                        <div className="Customers-form-group Customers-third-width">
-                                            <label className="Customers-form-label">City</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="billingCity"
-                                                value={customerFormData.billingCity}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="City"
-                                            />
-                                        </div>
-                                        <div className="Customers-form-group Customers-third-width">
-                                            <label className="Customers-form-label">State</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="billingState"
-                                                value={customerFormData.billingState}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="State"
-                                            />
-                                        </div>
-                                        <div className="Customers-form-group Customers-third-width">
-                                            <label className="Customers-form-label">Zip Code</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="billingZip"
-                                                value={customerFormData.billingZip}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="Zip code"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
 
-                                <div className="Customers-form-section">
-                                    <h3>Shipping Address</h3>
-                                    <div className="Customers-form-group">
-                                        <label className="Customers-form-label">Street Address</label>
-                                        <input
-                                            type="text"
-                                            className="Customers-form-input"
-                                            name="shippingAddress"
-                                            value={customerFormData.shippingAddress}
-                                            onChange={handleCustomerInputChange}
-                                            placeholder="Street address"
-                                        />
-                                    </div>
-                                    <div className="Customers-form-row">
-                                        <div className="Customers-form-group Customers-third-width">
-                                            <label className="Customers-form-label">City</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="shippingCity"
-                                                value={customerFormData.shippingCity}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="City"
-                                            />
+                                    {/* Shipping Address */}
+                                    <div style={{ flex: 1, paddingLeft: '2rem', borderLeft: '1px solid #edf2f7' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <h3 className="Customers-section-subtitle">Shipping Addresses</h3>
+                                            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        name="shippingSameAsBilling"
+                                                        checked={customerFormData.shippingSameAsBilling}
+                                                        onChange={handleCustomerInputChange}
+                                                        style={{ marginRight: '5px' }}
+                                                    />
+                                                    Apply Billing to First Shipping
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    className="Customers-voucher-badge text-blue-600 border border-blue-600 bg-white hover:bg-blue-50"
+                                                    onClick={addCustomerShippingAddress}
+                                                    style={{ padding: '2px 8px', fontSize: '0.8rem', cursor: 'pointer' }}
+                                                >
+                                                    + Add More
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="Customers-form-group Customers-third-width">
-                                            <label className="Customers-form-label">State</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="shippingState"
-                                                value={customerFormData.shippingState}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="State"
-                                            />
-                                        </div>
-                                        <div className="Customers-form-group Customers-third-width">
-                                            <label className="Customers-form-label">Zip Code</label>
-                                            <input
-                                                type="text"
-                                                className="Customers-form-input"
-                                                name="shippingZip"
-                                                value={customerFormData.shippingZip}
-                                                onChange={handleCustomerInputChange}
-                                                placeholder="Zip code"
-                                            />
-                                        </div>
+
+                                        {customerFormData.shippingSameAsBilling && (
+                                            <div style={{ marginBottom: '1.5rem', padding: '15px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#0369a1' }}>First Shipping Address (Same as Billing)</h4>
+                                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#0c4a6e' }}>
+                                                    <strong>Address:</strong> {customerFormData.billingAddress || 'N/A'}<br />
+                                                    {customerFormData.billingCity && `${customerFormData.billingCity}, `}{customerFormData.billingState && `${customerFormData.billingState}, `}{customerFormData.billingZipCode}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {customerFormData.shippingAddresses.length === 0 && !customerFormData.shippingSameAsBilling && (
+                                            <div className="Customers-form-group" style={{ padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                                <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#64748b' }}>
+                                                    No shipping addresses added.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={addCustomerShippingAddress}
+                                                    className="Customers-voucher-badge text-blue-600"
+                                                >
+                                                    Click here to add one
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {customerFormData.shippingAddresses.map((addr, index) => (
+                                            <div key={index} style={{ marginBottom: '1.5rem', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', position: 'relative' }}>
+                                                {customerFormData.shippingAddresses.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeCustomerShippingAddress(index)}
+                                                        style={{ position: 'absolute', top: '10px', right: '10px', color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                )}
+                                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#475569' }}>Shipping Address #{index + 1}</h4>
+
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Name</label>
+                                                    <input
+                                                        type="text"
+                                                        className="Customers-form-input"
+                                                        value={addr.name}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'name', e.target.value)}
+                                                        placeholder="Enter Name"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Phone</label>
+                                                    <input
+                                                        type="text"
+                                                        className="Customers-form-input"
+                                                        value={addr.phone}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'phone', e.target.value)}
+                                                        placeholder="Enter Phone"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Address</label>
+                                                    <textarea
+                                                        className="Customers-form-textarea"
+                                                        value={addr.address}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'address', e.target.value)}
+                                                        placeholder="Enter Address"
+                                                        rows="2"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-row">
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.city}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'city', e.target.value)}
+                                                            placeholder="City"
+                                                        />
+                                                    </div>
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.state}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'state', e.target.value)}
+                                                            placeholder="State"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="Customers-form-row">
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.country}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'country', e.target.value)}
+                                                            placeholder="Country"
+                                                        />
+                                                    </div>
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.zipCode}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'zipCode', e.target.value)}
+                                                            placeholder="Zip Code"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
-                            <div className="Customers-modal-footer">
-                                <button type="button" className="Customers-btn-cancel" onClick={() => setShowAddCustomerModal(false)}>Cancel</button>
-                                <button type="submit" className="Customers-btn-submit" disabled={uploadingAnyFile}>Save Customer</button>
-                            </div>
-                        </form>
+                        </div>
+
+                        <div className="Customers-modal-footer">
+                            <button type="button" className="Customers-btn-cancel" onClick={() => setShowAddCustomerModal(false)}>Cancel</button>
+                            <button type="button" className="Customers-btn-save" onClick={handleCustomerSubmit} disabled={customerSubmitting}>
+                                {customerSubmitting ? 'Creating...' : 'Create'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

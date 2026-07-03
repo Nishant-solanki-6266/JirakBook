@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { CompanyContext } from '../../../context/CompanyContext';
 import { AuthContext } from '../../../context/AuthContext';
 import {
@@ -30,6 +30,8 @@ import GetCompanyId from '../../../api/GetCompanyId';
 import chartOfAccountsService from '../../../services/chartOfAccountsService';
 import uomService from '../../../services/uomService';
 import inventoryService from '../../../services/inventoryService';
+import axiosInstance from '../../../api/axiosInstance';
+import '../Customers/Customers.css';
 
 const POS = () => {
     const { id } = useParams();
@@ -61,14 +63,52 @@ const POS = () => {
     const [selectedAccountId, setSelectedAccountId] = useState('');
     const [selectedDueAccountId, setSelectedDueAccountId] = useState('');
 
-    // Autocomplete & Quick Customer States
+    // Autocomplete & Customer Modal States
     const [customerSearchTerm, setCustomerSearchTerm] = useState('');
     const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-    const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
-    const [quickCustomerName, setQuickCustomerName] = useState('');
-    const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
-    const [quickCustomerEmail, setQuickCustomerEmail] = useState('');
-    const [quickCustomerSubmitting, setQuickCustomerSubmitting] = useState(false);
+    const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+    const [customerFormData, setCustomerFormData] = useState({
+        name: '',
+        nameArabic: '',
+        companyName: '',
+        companyLocation: '',
+        profileImage: '',
+        anyFile: '',
+        accountType: 'Credit',
+        balanceType: 'Debit',
+        accountBalance: 0,
+        creationDate: new Date().toISOString().split('T')[0],
+        bankAccountNumber: '',
+        bankIFSC: '',
+        bankNameBranch: '',
+        phone: '',
+        email: '',
+        creditPeriod: '',
+        gstNumber: '',
+        gstEnabled: false,
+        billingName: '',
+        billingPhone: '',
+        billingAddress: '',
+        billingCity: '',
+        billingState: '',
+        billingCountry: '',
+        billingZipCode: '',
+        shippingSameAsBilling: false,
+        shippingName: '',
+        shippingPhone: '',
+        shippingAddress: '',
+        shippingCity: '',
+        shippingState: '',
+        shippingCountry: '',
+        shippingZipCode: '',
+        shippingAddresses: []
+    });
+    const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
+    const [uploadingAnyFile, setUploadingAnyFile] = useState(false);
+    const [customerSubmitting, setCustomerSubmitting] = useState(false);
+
+    const profileImageRef = useRef();
+    const anyFileRef = useRef();
 
     // Data States
     const [categories, setCategories] = useState(['All']);
@@ -617,40 +657,132 @@ const POS = () => {
         }
     };
 
-    const handleCreateQuickCustomer = async (e) => {
-        e.preventDefault();
-        if (!quickCustomerName.trim()) {
-            toast.error('Customer name is required');
+    const handleCustomerInputChange = (e) => {
+        const { name, value, type, checked } = e.target;
+
+        setCustomerFormData(prev => {
+            let processedValue = type === 'checkbox' ? checked : value;
+
+            if (type !== 'checkbox' && typeof processedValue === 'string') {
+                if (name === 'phone' || name === 'billingPhone' || name === 'shippingPhone') {
+                    processedValue = processedValue.replace(/\D/g, '');
+                } else if (name === 'accountBalance') {
+                    processedValue = processedValue.replace(/-/g, '');
+                    if (processedValue !== '') {
+                        const parsed = parseFloat(processedValue);
+                        if (!isNaN(parsed) && parsed < 0) {
+                            processedValue = '0';
+                        }
+                    }
+                }
+            }
+
+            const newData = {
+                ...prev,
+                [name]: processedValue
+            };
+
+            if (name === 'shippingSameAsBilling' && checked) {
+                newData.shippingName = prev.billingName;
+                newData.shippingPhone = prev.billingPhone;
+                newData.shippingAddress = prev.billingAddress;
+                newData.shippingCity = prev.billingCity;
+                newData.shippingState = prev.billingState;
+                newData.shippingCountry = prev.billingCountry;
+                newData.shippingZipCode = prev.billingZipCode;
+            }
+
+            return newData;
+        });
+    };
+
+    const handleCustomerShippingAddressChange = (index, field, value) => {
+        setCustomerFormData(prev => {
+            const newAddresses = [...prev.shippingAddresses];
+            let processedValue = value;
+            if (field === 'phone' && typeof value === 'string') {
+                processedValue = value.replace(/\D/g, '');
+            }
+            newAddresses[index] = { ...newAddresses[index], [field]: processedValue };
+            return { ...prev, shippingAddresses: newAddresses };
+        });
+    };
+
+    const addCustomerShippingAddress = () => {
+        setCustomerFormData(prev => ({
+            ...prev,
+            shippingAddresses: [
+                ...prev.shippingAddresses,
+                { name: '', phone: '', address: '', city: '', state: '', country: '', zipCode: '', isDefault: false }
+            ]
+        }));
+    };
+
+    const removeCustomerShippingAddress = (index) => {
+        setCustomerFormData(prev => ({
+            ...prev,
+            shippingAddresses: prev.shippingAddresses.filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleCustomerFileUpload = async (file, field, folder) => {
+        if (!file) return;
+        const setUploading = field === 'profileImage' ? setUploadingProfileImage : setUploadingAnyFile;
+        setUploading(true);
+        try {
+            const formDataUpload = new FormData();
+            formDataUpload.append('file', file);
+            const res = await axiosInstance.post(`/upload?folder=${folder}`, formDataUpload, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            if (res.data.success) {
+                setCustomerFormData(prev => ({ ...prev, [field]: res.data.url }));
+                toast.success(`${field === 'profileImage' ? 'Profile image' : 'File'} uploaded!`);
+            }
+        } catch (err) {
+            toast.error('Upload failed: ' + (err.response?.data?.message || err.message));
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleFullCustomerSubmit = async (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!customerFormData.name || !customerFormData.email) {
+            toast.error('Please fill in required fields (Name and Email)');
             return;
         }
 
-        setQuickCustomerSubmitting(true);
-        try {
-            const companyId = GetCompanyId();
-            const payload = {
-                name: quickCustomerName.trim(),
-                phone: quickCustomerPhone.trim(),
-                email: quickCustomerEmail.trim(),
-                accountType: 'Cash',
-                balanceType: 'Debit',
-                accountBalance: 0,
-                creationDate: new Date().toISOString().split('T')[0],
-                gstEnabled: false,
-                shippingSameAsBilling: true,
-                billingName: quickCustomerName.trim(),
-                billingPhone: quickCustomerPhone.trim(),
-                billingAddress: '',
-                billingCity: '',
-                billingState: '',
-                billingCountry: '',
-                billingZipCode: '',
-                shippingAddresses: []
-            };
+        setCustomerSubmitting(true);
 
+        const payload = { ...customerFormData };
+        let shippingAddresses = [...customerFormData.shippingAddresses];
+
+        if (customerFormData.shippingSameAsBilling) {
+            const billingAsShipping = {
+                name: customerFormData.billingName || customerFormData.name,
+                phone: customerFormData.billingPhone || customerFormData.phone,
+                address: customerFormData.billingAddress,
+                city: customerFormData.billingCity,
+                state: customerFormData.billingState,
+                country: customerFormData.billingCountry,
+                zipCode: customerFormData.billingZipCode,
+                isDefault: true
+            };
+            shippingAddresses = [billingAsShipping, ...customerFormData.shippingAddresses];
+        }
+
+        payload.shippingAddresses = shippingAddresses;
+        const companyId = GetCompanyId();
+        payload.companyId = parseInt(companyId);
+
+        try {
             const response = await customerService.createCustomer(payload);
-            if (response.success) {
-                toast.success('Customer created successfully');
-                const newCust = response.data?.customer || response.data;
+            const success = response.success || (response.data && response.success !== false);
+            
+            if (success) {
+                toast.success('Customer created successfully!');
+                const newCust = response.data?.customer || response.data || response;
                 
                 // 1. Refresh allAccounts & accounts so the new ledger immediately exists in the selectable lists
                 const accountsRes = await chartOfAccountsService.getAllLedgers(companyId);
@@ -675,20 +807,54 @@ const POS = () => {
                     setSelectedCustomer(newCust);
                     setCustomerSearchTerm(newCust.name);
                 }
-                
-                // Reset form and close modal
-                setQuickCustomerName('');
-                setQuickCustomerPhone('');
-                setQuickCustomerEmail('');
-                setShowQuickCustomerModal(false);
+
+                setShowAddCustomerModal(false);
+
+                // Reset customer form
+                setCustomerFormData({
+                    name: '',
+                    nameArabic: '',
+                    companyName: '',
+                    companyLocation: '',
+                    profileImage: '',
+                    anyFile: '',
+                    accountType: 'Credit',
+                    balanceType: 'Debit',
+                    accountBalance: 0,
+                    creationDate: new Date().toISOString().split('T')[0],
+                    bankAccountNumber: '',
+                    bankIFSC: '',
+                    bankNameBranch: '',
+                    phone: '',
+                    email: '',
+                    creditPeriod: '',
+                    gstNumber: '',
+                    gstEnabled: false,
+                    billingName: '',
+                    billingPhone: '',
+                    billingAddress: '',
+                    billingCity: '',
+                    billingState: '',
+                    billingCountry: '',
+                    billingZipCode: '',
+                    shippingSameAsBilling: false,
+                    shippingName: '',
+                    shippingPhone: '',
+                    shippingAddress: '',
+                    shippingCity: '',
+                    shippingState: '',
+                    shippingCountry: '',
+                    shippingZipCode: '',
+                    shippingAddresses: []
+                });
             } else {
                 toast.error(response.message || 'Failed to create customer');
             }
         } catch (error) {
-            console.error('Error creating customer:', error);
-            toast.error(error.message || 'Failed to create customer');
+            console.error('Error saving customer:', error);
+            toast.error(error.message || 'Failed to save customer');
         } finally {
-            setQuickCustomerSubmitting(false);
+            setCustomerSubmitting(false);
         }
     };
 
@@ -910,7 +1076,7 @@ const POS = () => {
                         <button
                             type="button"
                             className="companypos-add-customer-btn"
-                            onClick={() => setShowQuickCustomerModal(true)}
+                            onClick={() => setShowAddCustomerModal(true)}
                             style={{
                                 width: '46px',
                                 height: '46px',
@@ -1556,95 +1722,557 @@ const POS = () => {
                 )
             }
 
-            {/* Quick Customer Modal */}
-            {showQuickCustomerModal && (
-                <div className="companypos-modal-overlay">
-                    <div className="companypos-modal-content" style={{ maxWidth: '450px' }}>
-                        <div className="companypos-modal-header" style={{ padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'between', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
-                            <div className="companypos-modal-header-title-container" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <User className="companypos-modal-title-icon" size={22} style={{ color: '#8ce043' }} />
-                                <h2 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#1e293b', margin: 0 }}>Quick Customer</h2>
+            {/* Full Add Customer Modal */}
+            {showAddCustomerModal && (
+                <div className="Customers-modal-overlay">
+                    <div className="Customers-modal-content Customers-modal-large" style={{ textAlign: 'left' }}>
+                        <div className="Customers-modal-header">
+                            <h2 className="Customers-modal-title">Add Customer</h2>
+                            <button className="Customers-close-btn" onClick={() => setShowAddCustomerModal(false)}>×</button>
+                        </div>
+
+                        <div className="Customers-modal-body">
+                            {/* Basic Information */}
+                            <div className="Customers-form-section" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+                                <h3 className="Customers-section-subtitle">Basic Information</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Name (English) <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="name"
+                                            value={customerFormData.name}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Name"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Name (Arabic)</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="nameArabic"
+                                            value={customerFormData.nameArabic}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Name (Arabic)"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Company Name</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="companyName"
+                                            value={customerFormData.companyName}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter company name"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-google-loc">
+                                        <label className="Customers-form-label">Company Google Location</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="companyLocation"
+                                            value={customerFormData.companyLocation}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Google Maps link"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* File Uploads */}
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-profile-img">
+                                        <label className="Customers-form-label">Profile Image</label>
+                                        {customerFormData.profileImage ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                                <img
+                                                    src={customerFormData.profileImage}
+                                                    alt="Profile"
+                                                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerFormData(prev => ({ ...prev, profileImage: '' }))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                >
+                                                    x Remove
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <input
+                                            type="file"
+                                            ref={profileImageRef}
+                                            accept="image/jpeg,image/png,image/jpg"
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleCustomerFileUpload(e.target.files[0], 'profileImage', 'customers')}
+                                        />
+                                        <div className="Customers-file-input-wrapper" onClick={() => profileImageRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                            <div className="Customers-file-label">
+                                                <span className="Customers-file-btn">{uploadingProfileImage ? 'Uploading...' : 'Choose File'}</span>
+                                                <span className="Customers-file-name">{customerFormData.profileImage ? 'Image uploaded ✓' : 'No file chosen'}</span>
+                                            </div>
+                                        </div>
+                                        <span className="Customers-file-note">JPEG, PNG or JPG (max 5MB)</span>
+                                    </div>
+                                    <div className="Customers-form-group Customers-any-file">
+                                        <label className="Customers-form-label">Any File</label>
+                                        {customerFormData.anyFile ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                                <a
+                                                    href={customerFormData.anyFile}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ color: '#2563eb', fontSize: '0.8rem', textDecoration: 'underline', wordBreak: 'break-all', maxWidth: '200px' }}
+                                                >
+                                                    View File
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCustomerFormData(prev => ({ ...prev, anyFile: '' }))}
+                                                    style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.75rem' }}
+                                                >
+                                                    x Remove
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                        <input
+                                            type="file"
+                                            ref={anyFileRef}
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleCustomerFileUpload(e.target.files[0], 'anyFile', 'customers')}
+                                        />
+                                        <div className="Customers-file-input-wrapper" onClick={() => anyFileRef.current?.click()} style={{ cursor: 'pointer' }}>
+                                            <div className="Customers-file-label">
+                                                <span className="Customers-file-btn">{uploadingAnyFile ? 'Uploading...' : 'Choose File'}</span>
+                                                <span className="Customers-file-name">{customerFormData.anyFile ? 'File uploaded ✓' : 'No file chosen'}</span>
+                                            </div>
+                                        </div>
+                                        <span className="Customers-file-note">Any file type. Max 10MB</span>
+                                    </div>
+                                </div>
                             </div>
-                            <button 
-                                onClick={() => {
-                                    setShowQuickCustomerModal(false);
-                                    setQuickCustomerName('');
-                                    setQuickCustomerPhone('');
-                                    setQuickCustomerEmail('');
-                                }} 
-                                className="companypos-modal-close-btn"
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                            >
-                                <X size={22} style={{ color: '#94a3b8' }} />
+
+                            {/* Account Information */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Account Information</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Customer Type <span className="Customers-text-red">*</span></label>
+                                        <select
+                                            className="Customers-form-select"
+                                            name="accountType"
+                                            value={customerFormData.accountType || 'Credit'}
+                                            onChange={handleCustomerInputChange}
+                                        >
+                                            <option value="Credit">Credit Customer</option>
+                                            <option value="Cash">Cash Customer</option>
+                                        </select>
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Balance Type</label>
+                                        <select
+                                            className="Customers-form-select"
+                                            name="balanceType"
+                                            value={customerFormData.balanceType}
+                                            onChange={handleCustomerInputChange}
+                                        >
+                                            <option value="Debit">Debit</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <div className="Customers-input-with-note">
+                                            <label className="Customers-form-label">Account Name <span className="Customers-text-red">*</span></label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                value={customerFormData.name}
+                                                readOnly
+                                                disabled
+                                                style={{ backgroundColor: '#f3f4f6' }}
+                                            />
+                                            <span className="Customers-input-note">This will auto-fill from selection above</span>
+                                        </div>
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Account Balance <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="number"
+                                            className="Customers-form-input"
+                                            name="accountBalance"
+                                            value={customerFormData.accountBalance}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="0.00"
+                                            min="0"
+                                            onKeyDown={(e) => {
+                                                if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                                                    e.preventDefault();
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Creation Date <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="date"
+                                            className="Customers-form-input"
+                                            name="creationDate"
+                                            value={customerFormData.creationDate}
+                                            onChange={handleCustomerInputChange}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Bank Details */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Bank Details</h3>
+                                <div className="Customers-form-row Customers-three-col">
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank Account Number</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankAccountNumber"
+                                            value={customerFormData.bankAccountNumber}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank account number"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank IFSC</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankIFSC"
+                                            value={customerFormData.bankIFSC}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank IFSC"
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group">
+                                        <label className="Customers-form-label">Bank Name & Branch</label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="bankNameBranch"
+                                            value={customerFormData.bankNameBranch}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter bank name & branch"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Contact & GST */}
+                            <div className="Customers-form-section">
+                                <h3 className="Customers-section-subtitle">Contact & Status</h3>
+                                <div className="Customers-form-row Customers-mixed-col">
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Phone <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="text"
+                                            className="Customers-form-input"
+                                            name="phone"
+                                            value={customerFormData.phone}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Phone"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Email <span className="Customers-text-red">*</span></label>
+                                        <input
+                                            type="email"
+                                            className="Customers-form-input"
+                                            name="email"
+                                            value={customerFormData.email}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter Email"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="Customers-form-group Customers-half-width">
+                                        <label className="Customers-form-label">Credit Period (days)</label>
+                                        <input
+                                            type="number"
+                                            className="Customers-form-input"
+                                            name="creditPeriod"
+                                            value={customerFormData.creditPeriod}
+                                            onChange={handleCustomerInputChange}
+                                            placeholder="Enter credit period"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="Customers-form-row" style={{ alignItems: 'center' }}>
+                                    <label className="Customers-switch" style={{ marginRight: '10px' }}>
+                                        <input
+                                            type="checkbox"
+                                            name="gstEnabled"
+                                            checked={customerFormData.gstEnabled}
+                                            onChange={handleCustomerInputChange}
+                                        />
+                                        <span className="Customers-slider Customers-round"></span>
+                                    </label>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Enable GST</span>
+
+                                    {customerFormData.gstEnabled && (
+                                        <div className="Customers-form-group" style={{ marginLeft: '2rem', flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="gstNumber"
+                                                value={customerFormData.gstNumber}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter GSTIN"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Addresses */}
+                            <div className="Customers-form-section">
+                                <div className="Customers-form-row">
+                                    {/* Billing Address */}
+                                    <div style={{ flex: 1 }}>
+                                        <h3 className="Customers-section-subtitle">Billing Address</h3>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Name</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingName"
+                                                value={customerFormData.billingName}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Name"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Phone</label>
+                                            <input
+                                                type="text"
+                                                className="Customers-form-input"
+                                                name="billingPhone"
+                                                value={customerFormData.billingPhone}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Phone"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-group">
+                                            <label className="Customers-form-label">Address</label>
+                                            <textarea
+                                                className="Customers-form-textarea"
+                                                name="billingAddress"
+                                                value={customerFormData.billingAddress}
+                                                onChange={handleCustomerInputChange}
+                                                placeholder="Enter Address"
+                                                rows="3"
+                                            />
+                                        </div>
+                                        <div className="Customers-form-row">
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingCity"
+                                                    value={customerFormData.billingCity}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="City"
+                                                />
+                                            </div>
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingState"
+                                                    value={customerFormData.billingState}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="State"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="Customers-form-row">
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingCountry"
+                                                    value={customerFormData.billingCountry}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="Country"
+                                                />
+                                            </div>
+                                            <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                <input
+                                                    type="text"
+                                                    className="Customers-form-input"
+                                                    name="billingZipCode"
+                                                    value={customerFormData.billingZipCode}
+                                                    onChange={handleCustomerInputChange}
+                                                    placeholder="Zip Code"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Shipping Address */}
+                                    <div style={{ flex: 1, paddingLeft: '2rem', borderLeft: '1px solid #edf2f7' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <h3 className="Customers-section-subtitle">Shipping Addresses</h3>
+                                            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                                                <label style={{ display: 'flex', alignItems: 'center', fontSize: '0.85rem' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        name="shippingSameAsBilling"
+                                                        checked={customerFormData.shippingSameAsBilling}
+                                                        onChange={handleCustomerInputChange}
+                                                        style={{ marginRight: '5px' }}
+                                                    />
+                                                    Apply Billing to First Shipping
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    className="Customers-voucher-badge text-blue-600 border border-blue-600 bg-white hover:bg-blue-50"
+                                                    onClick={addCustomerShippingAddress}
+                                                    style={{ padding: '2px 8px', fontSize: '0.8rem', cursor: 'pointer' }}
+                                                >
+                                                    + Add More
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {customerFormData.shippingSameAsBilling && (
+                                            <div style={{ marginBottom: '1.5rem', padding: '15px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px' }}>
+                                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#0369a1' }}>First Shipping Address (Same as Billing)</h4>
+                                                <p style={{ margin: 0, fontSize: '0.85rem', color: '#0c4a6e' }}>
+                                                    <strong>Address:</strong> {customerFormData.billingAddress || 'N/A'}<br />
+                                                    {customerFormData.billingCity && `${customerFormData.billingCity}, `}{customerFormData.billingState && `${customerFormData.billingState}, `}{customerFormData.billingZipCode}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {customerFormData.shippingAddresses.length === 0 && !customerFormData.shippingSameAsBilling && (
+                                            <div className="Customers-form-group" style={{ padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                                                <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#64748b' }}>
+                                                    No shipping addresses added.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={addCustomerShippingAddress}
+                                                    className="Customers-voucher-badge text-blue-600"
+                                                >
+                                                    Click here to add one
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {customerFormData.shippingAddresses.map((addr, index) => (
+                                            <div key={index} style={{ marginBottom: '1.5rem', padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', position: 'relative' }}>
+                                                {customerFormData.shippingAddresses.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeCustomerShippingAddress(index)}
+                                                        style={{ position: 'absolute', top: '10px', right: '10px', color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer' }}
+                                                    >
+                                                        <X size={16} />
+                                                    </button>
+                                                )}
+                                                <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: '#475569' }}>Shipping Address #{index + 1}</h4>
+
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Name</label>
+                                                    <input
+                                                        type="text"
+                                                        className="Customers-form-input"
+                                                        value={addr.name}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'name', e.target.value)}
+                                                        placeholder="Enter Name"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Phone</label>
+                                                    <input
+                                                        type="text"
+                                                        className="Customers-form-input"
+                                                        value={addr.phone}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'phone', e.target.value)}
+                                                        placeholder="Enter Phone"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-group">
+                                                    <label className="Customers-form-label">Address</label>
+                                                    <textarea
+                                                        className="Customers-form-textarea"
+                                                        value={addr.address}
+                                                        onChange={(e) => handleCustomerShippingAddressChange(index, 'address', e.target.value)}
+                                                        placeholder="Enter Address"
+                                                        rows="2"
+                                                    />
+                                                </div>
+                                                <div className="Customers-form-row">
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.city}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'city', e.target.value)}
+                                                            placeholder="City"
+                                                        />
+                                                    </div>
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.state}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'state', e.target.value)}
+                                                            placeholder="State"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="Customers-form-row">
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.country}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'country', e.target.value)}
+                                                            placeholder="Country"
+                                                        />
+                                                    </div>
+                                                    <div className="Customers-form-group" style={{ flex: 1 }}>
+                                                        <input
+                                                            type="text"
+                                                            className="Customers-form-input"
+                                                            value={addr.zipCode}
+                                                            onChange={(e) => handleCustomerShippingAddressChange(index, 'zipCode', e.target.value)}
+                                                            placeholder="Zip Code"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="Customers-modal-footer">
+                            <button type="button" className="Customers-btn-cancel" onClick={() => setShowAddCustomerModal(false)}>Cancel</button>
+                            <button type="button" className="Customers-btn-save" onClick={handleFullCustomerSubmit} disabled={customerSubmitting}>
+                                {customerSubmitting ? 'Creating...' : 'Create'}
                             </button>
                         </div>
-                        <form onSubmit={handleCreateQuickCustomer}>
-                            <div className="companypos-modal-body" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                <div className="companypos-form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    <label className="companypos-form-label" style={{ fontWeight: '700', color: '#475569', fontSize: '0.85rem', textAlign: 'left' }}>
-                                        Customer Name <span style={{ color: '#ef4444' }}>*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        className="companypos-control-input"
-                                        placeholder="Enter Customer Name"
-                                        value={quickCustomerName}
-                                        onChange={(e) => setQuickCustomerName(e.target.value)}
-                                        required
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div className="companypos-form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    <label className="companypos-form-label" style={{ fontWeight: '700', color: '#475569', fontSize: '0.85rem', textAlign: 'left' }}>
-                                        Phone Number
-                                    </label>
-                                    <input
-                                        type="text"
-                                        className="companypos-control-input"
-                                        placeholder="Enter Phone Number"
-                                        value={quickCustomerPhone}
-                                        onChange={(e) => setQuickCustomerPhone(e.target.value.replace(/\D/g, ''))}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                                <div className="companypos-form-group" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                                    <label className="companypos-form-label" style={{ fontWeight: '700', color: '#475569', fontSize: '0.85rem', textAlign: 'left' }}>
-                                        Email Address
-                                    </label>
-                                    <input
-                                        type="email"
-                                        className="companypos-control-input"
-                                        placeholder="Enter Email Address"
-                                        value={quickCustomerEmail}
-                                        onChange={(e) => setQuickCustomerEmail(e.target.value)}
-                                        style={{ width: '100%' }}
-                                    />
-                                </div>
-                            </div>
-                            <div className="companypos-modal-footer" style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'end', gap: '0.75rem' }}>
-                                <button 
-                                    type="button" 
-                                    className="companypos-btn-secondary" 
-                                    onClick={() => {
-                                        setShowQuickCustomerModal(false);
-                                        setQuickCustomerName('');
-                                        setQuickCustomerPhone('');
-                                        setQuickCustomerEmail('');
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button 
-                                    type="submit" 
-                                    className="companypos-btn-success" 
-                                    disabled={quickCustomerSubmitting}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                                >
-                                    {quickCustomerSubmitting ? 'Saving...' : 'Save & Select'}
-                                    {!quickCustomerSubmitting && <Check size={18} />}
-                                </button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}
