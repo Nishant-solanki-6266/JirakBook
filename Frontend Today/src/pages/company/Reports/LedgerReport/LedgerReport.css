@@ -401,4 +401,89 @@
 
 .Ledger-hoverable-row:hover {
     background-color: #f1f5f9;
-}
+}
+
+/* ============================
+   DEDICATED FILTER PANEL
+   ============================ */
+.Ledger-display-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+    font-family: 'Inter', sans-serif;
+}
+
+.Ledger-panel-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #64748b;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px dashed #e2e8f0;
+    padding-bottom: 8px;
+}
+
+.Ledger-panel-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+}
+
+.Ledger-panel-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 500;
+    color: #64748b;
+    font-size: 0.85rem;
+    transition: color 0.2s;
+}
+
+.Ledger-panel-checkbox-label:hover {
+    color: #1e293b;
+}
+
+.Ledger-panel-checkbox-input {
+    width: 17px;
+    height: 17px;
+    accent-color: #4ade80; /* Green accent color matching layout */
+    cursor: pointer;
+}
+
+/* Inline items inside row list */
+.Ledger-inline-items {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    width: 100%;
+    max-width: 320px;
+}
+
+.Ledger-inline-items-title {
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 4px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+}
+
+.Ledger-inline-item-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: #64748b;
+    padding: 2px 0;
+}
+

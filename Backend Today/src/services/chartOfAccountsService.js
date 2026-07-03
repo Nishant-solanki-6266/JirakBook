@@ -709,10 +709,13 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
                         invoiceitem: {
                             include: {
                                 product: {
-                                    select: { id: true, name: true, sku: true }
+                                    select: { id: true, name: true, sku: true, unit: true }
                                 },
                                 service: {
                                     select: { id: true, name: true, sku: true }
+                                },
+                                warehouse: {
+                                    select: { id: true, name: true }
                                 }
                             }
                         }
@@ -726,7 +729,10 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
                         purchasebillitem: {
                             include: {
                                 product: {
-                                    select: { id: true, name: true, sku: true }
+                                    select: { id: true, name: true, sku: true, unit: true }
+                                },
+                                warehouse: {
+                                    select: { id: true, name: true }
                                 }
                             }
                         }
@@ -754,7 +760,10 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
                         posinvoiceitem: {
                             include: {
                                 product: {
-                                    select: { id: true, name: true, sku: true }
+                                    select: { id: true, name: true, sku: true, unit: true }
+                                },
+                                warehouse: {
+                                    select: { id: true, name: true }
                                 }
                             }
                         }
