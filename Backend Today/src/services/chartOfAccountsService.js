@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { getConversionRate, getCompanyCurrency, getCompanyHistoricalCurrency } = require('../utils/currencyConverter');
 
 const calculateInventoryValue = async (companyId) => {
     try {
@@ -155,6 +156,10 @@ const calculateDynamicLedgerBalances = async (companyId, inventoryValue) => {
             })
         ]);
 
+        const companyCurrency = await getCompanyCurrency(companyIdInt);
+        const histCurr = await getCompanyHistoricalCurrency(companyIdInt);
+        const rate = await getConversionRate(histCurr, companyCurrency);
+
         const debitMap = new Map(debitSums.map(d => [d.debitLedgerId, d._sum.amount || 0]));
         const creditMap = new Map(creditSums.map(c => [c.creditLedgerId, c._sum.amount || 0]));
 
@@ -170,9 +175,9 @@ const calculateDynamicLedgerBalances = async (companyId, inventoryValue) => {
             const isInventory = l.name.toLowerCase().includes('inventory asset');
             const isRetainedEarnings = l.name.toLowerCase().includes('retained earnings');
             const groupType = l.accountgroup?.type;
-            const opening = l.openingBalance || 0;
-            const txnDebit = debitMap.get(l.id) || 0;
-            const txnCredit = creditMap.get(l.id) || 0;
+            const opening = (l.openingBalance || 0) * rate;
+            const txnDebit = (debitMap.get(l.id) || 0) * rate;
+            const txnCredit = (creditMap.get(l.id) || 0) * rate;
 
             let dynamicBalance;
             if (isInventory) {

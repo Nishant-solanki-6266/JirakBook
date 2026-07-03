@@ -1,8 +1,8 @@
 import axiosInstance from '../api/axiosInstance';
 
 const purchaseBillService = {
-    createBill: async (data) => {
-        const response = await axiosInstance.post('/purchase-bills', data);
+    createBill: async (data, allowDuplicate = false) => {
+        const response = await axiosInstance.post(`/purchase-bills${allowDuplicate ? '?allowDuplicate=true' : ''}`, data);
         return response.data;
     },
     getBills: async (companyId) => {

@@ -75,6 +75,18 @@ const POS = () => {
     const [products, setProducts] = useState([]);
     const [customers, setCustomers] = useState([]);
     const [companyDetails, setCompanyDetails] = useState(null);
+    const isNegativeStockAllowed = () => {
+        if (!companyDetails?.inventoryConfig) return true;
+        try {
+            const config = typeof companyDetails.inventoryConfig === 'string'
+                ? JSON.parse(companyDetails.inventoryConfig)
+                : companyDetails.inventoryConfig;
+            return config.negativeStockAllow !== false;
+        } catch (e) {
+            console.error('Error parsing inventoryConfig:', e);
+            return true;
+        }
+    };
     const [accounts, setAccounts] = useState([]);
     const [allAccounts, setAllAccounts] = useState([]);
     const [allUoms, setAllUoms] = useState([]);
@@ -345,7 +357,7 @@ const POS = () => {
         const whId = selectedWarehouseId;
         const availableStock = getProductStockForWarehouse(product, whId);
 
-        if (availableStock <= 0) {
+        if (availableStock <= 0 && !isNegativeStockAllowed()) {
             toast.error("Out of stock in selected warehouse");
             return;
         }
@@ -373,7 +385,7 @@ const POS = () => {
                     const newQty = currentQty + change;
                     if (newQty < 1) return item;
                     const stockLimit = item.stock;
-                    if (newQty > stockLimit) {
+                    if (newQty > stockLimit && !isNegativeStockAllowed()) {
                         toast.error("Not enough stock");
                         return item;
                     }
@@ -393,7 +405,7 @@ const POS = () => {
         if (isNaN(newQty) || newQty < 1) return;
         const itemInCart = cart.find(item => item.cartItemId === cartItemId);
         const stockLimit = itemInCart ? itemInCart.stock : 0;
-        if (newQty > stockLimit) {
+        if (newQty > stockLimit && !isNegativeStockAllowed()) {
             toast.error(`Only ${stockLimit} units available in stock`);
             setCart(prevCart => prevCart.map(item => item.cartItemId === cartItemId ? { ...item, qty: stockLimit } : item));
             return;
@@ -433,7 +445,7 @@ const POS = () => {
             const matchedProd = products.find(p => p.id === item.id) || {};
             const availableStock = getProductStockForWarehouse(matchedProd, whId);
             const currentQty = parseFloat(item.qty) || 1;
-            const cappedQty = currentQty > availableStock ? Math.max(1, availableStock) : currentQty;
+            const cappedQty = (currentQty > availableStock && !isNegativeStockAllowed()) ? Math.max(1, availableStock) : currentQty;
             return {
                 ...item,
                 warehouseId: whId ? parseInt(whId) : (item.warehouseId || 1),
@@ -730,7 +742,7 @@ const POS = () => {
                     {loading ? <p className="col-span-full text-center py-10">Loading Products...</p> :
                         filteredProducts.length === 0 ? <p className="col-span-full text-center py-10">No products found</p> :
                             filteredProducts.map(product => (
-                                <div key={product.id} className={`companypos-product-card ${getProductStockForWarehouse(product, selectedWarehouseId) <= 0 ? 'opacity-50 grayscale' : ''}`} onClick={() => addToCart(product)}>
+                                <div key={product.id} className={`companypos-product-card ${getProductStockForWarehouse(product, selectedWarehouseId) <= 0 && !isNegativeStockAllowed() ? 'opacity-50 grayscale' : ''}`} onClick={() => addToCart(product)}>
                                     <div className={`companypos-stock-badge ${getProductStockForWarehouse(product, selectedWarehouseId) < 5 ? 'bg-red-500' : 'bg-green-500'}`}>{getProductStockForWarehouse(product, selectedWarehouseId)} in stock</div>
                                     <div className="companypos-product-image-placeholder">
                                         {product.image ? (

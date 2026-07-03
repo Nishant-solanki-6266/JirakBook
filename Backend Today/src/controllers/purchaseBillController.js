@@ -1,3 +1,4 @@
+
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const numberingService = require('../services/numberingService');
@@ -72,7 +73,7 @@ const adjustBillWithReturns = (bill) => {
 // Create Purchase Bill (Financial Posting)
 const createBill = async (req, res) => {
     try {
-        const { billNumber, date, dueDate, vendorId, purchaseOrderId, grnId, items, notes, discountAmount, taxAmount, totalAmount, billingName, billingAddress, billingCity, billingState, billingZipCode, billingCountry, shippingName, shippingAddress, shippingCity, shippingState, shippingZipCode, shippingCountry, overallDiscount, overallDiscountType, currency, exchangeRate, customFields, manualStatus, status } = req.body;
+        const { billNumber, date, dueDate, vendorId, purchaseOrderId, grnId, items, notes, discountAmount, taxAmount, totalAmount, billingName, billingAddress, billingCity, billingState, billingZipCode, billingCountry, shippingName, shippingAddress, shippingCity, shippingState, shippingZipCode, shippingCountry, overallDiscount, overallDiscountType, currency, exchangeRate, customFields, manualStatus, status, manualReference } = req.body;
         const companyId = req.user?.companyId || req.query.companyId || req.body.companyId;
 
         const docCurrency = currency || 'USD';
@@ -82,19 +83,25 @@ const createBill = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide all required fields' });
         }
 
-        // Check if Purchase Bill with this number already exists
-        const existingBill = await prisma.purchasebill.findFirst({
-            where: {
-                companyId: parseInt(companyId),
-                billNumber: billNumber
-            }
-        });
-
-        if (existingBill) {
-            return res.status(400).json({
-                success: false,
-                message: `Purchase Bill with number '${billNumber}' already exists. Please use a unique bill number.`
+        // Pre-flight: Check if this manual reference is already in use
+        if (manualReference && req.query.allowDuplicate !== 'true') {
+            const existingManual = await prisma.purchasebill.findFirst({
+                where: { companyId: parseInt(companyId), manualReference }
             });
+            if (existingManual) {
+                let suffix = 1;
+                let nextUniqueRef = `${manualReference}-${suffix}`;
+                while (await prisma.purchasebill.findFirst({ where: { companyId: parseInt(companyId), manualReference: nextUniqueRef } })) {
+                    suffix++;
+                    nextUniqueRef = `${manualReference}-${suffix}`;
+                }
+                return res.status(400).json({
+                    success: false,
+                    isDuplicate: true,
+                    nextUniqueRef,
+                    message: `Manual Reference '${manualReference}' already exists.`
+                });
+            }
         }
 
         // Check if Journal Entry / Voucher Number is already in use
@@ -182,7 +189,10 @@ const createBill = async (req, res) => {
             const bill = await tx.purchasebill.create({
                 data: {
                     customFields: customFields ? (typeof customFields === 'string' ? customFields : JSON.stringify(customFields)) : null,
+                    salespersonId: req.body.salespersonId ? parseInt(req.body.salespersonId) : null,
+                    carNumber: req.body.carNumber || null,
                     billNumber,
+                    manualReference,
                     date: new Date(date),
                     dueDate: dueDate ? new Date(dueDate) : null,
                     vendorId: parseInt(vendorId),
@@ -250,7 +260,7 @@ const createBill = async (req, res) => {
                         const allocatedSum = payment.allocations.reduce((sum, a) => sum + a.amount, 0);
                         const availableUnallocated = payment.amount - allocatedSum;
                         const adjustAmt = Math.min(parseFloat(adj.amount), availableUnallocated);
-                        
+
                         if (adjustAmt > 0) {
                             // Create allocation record
                             await tx.paymentbillallocation.create({
@@ -542,6 +552,7 @@ const getBills = async (req, res) => {
             where: { companyId: parseInt(companyId) },
             include: {
                 vendor: true,
+                salesperson: true,
                 purchasebillitem: {
                     include: {
                         product: true,
@@ -619,6 +630,7 @@ const getBillById = async (req, res) => {
             where: { id: parseInt(id), companyId: parseInt(companyId) },
             include: {
                 vendor: true,
+                salesperson: true,
                 purchasebillitem: {
                     include: {
                         product: true,
@@ -1079,7 +1091,7 @@ const updateBill = async (req, res) => {
                         const allocatedSum = payment.allocations.reduce((sum, a) => sum + a.amount, 0);
                         const availableUnallocated = payment.amount - allocatedSum;
                         const adjustAmt = Math.min(parseFloat(adj.amount), availableUnallocated);
-                        
+
                         if (adjustAmt > 0) {
                             await tx.paymentbillallocation.create({
                                 data: {
@@ -1412,9 +1424,12 @@ const updateBill = async (req, res) => {
                 where: { id: parseInt(id), companyId: parseInt(companyId) },
                 data: {
                     customFields: customFields !== undefined ? (typeof customFields === 'string' ? customFields : JSON.stringify(customFields)) : undefined,
+                    salespersonId: req.body.salespersonId !== undefined ? (req.body.salespersonId ? parseInt(req.body.salespersonId) : null) : undefined,
+                    carNumber: req.body.carNumber !== undefined ? req.body.carNumber : undefined,
                     notes,
                     date: targetDate,
                     billNumber: targetBillNumber,
+                    manualReference: req.body.manualReference !== undefined ? req.body.manualReference : undefined,
                     vendorId: targetVendorId,
                     dueDate: dueDate ? new Date(dueDate) : undefined,
                     subtotal: calculatedSubtotal,

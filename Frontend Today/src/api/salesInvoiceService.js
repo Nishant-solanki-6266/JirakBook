@@ -10,7 +10,7 @@ const salesInvoiceService = {
         return axios.get(`/sales-invoices/${id}${query}`);
     },
     getPublicById: (id) => axios.get(`/sales-invoices/public/${id}`),
-    create: (data) => axios.post('/sales-invoices', data),
+    create: (data, allowDuplicate = false) => axios.post(`/sales-invoices${allowDuplicate ? '?allowDuplicate=true' : ''}`, data),
     update: (id, data, companyId) => {
         const query = companyId ? `?companyId=${companyId}` : '';
         return axios.put(`/sales-invoices/${id}${query}`, data);

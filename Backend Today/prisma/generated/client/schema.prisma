@@ -179,6 +179,7 @@ model company {
   role                  role[]
   transaction_numbering transaction_numbering[]
   auditlog              auditlog[]
+  salesperson           salesperson[]
 
   @@index([planId], map: "Company_planId_fkey")
 }
@@ -481,6 +482,9 @@ model invoice {
   shippingZipCode       String?
   shippingCountry       String?
   customFields          String?                    @db.Text
+  carNumber             String?
+  salespersonId         Int?
+  salesperson           salesperson?               @relation(fields: [salespersonId], references: [id], onDelete: SetNull, map: "Invoice_salespersonId_fkey")
   company               company                    @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "Invoice_companyId_fkey")
   customer              customer                   @relation(fields: [customerId], references: [id], onDelete: Cascade, map: "Invoice_customerId_fkey")
   deliverychallan       deliverychallan?           @relation(fields: [deliveryChallanId], references: [id], onDelete: SetNull, map: "Invoice_deliveryChallanId_fkey")
@@ -493,10 +497,12 @@ model invoice {
   inventory_consumption inventory_consumption[]
   allocations           receiptinvoiceallocation[]
 
-  @@unique([companyId, invoiceNumber], map: "Invoice_companyId_invoiceNumber_key")
+  @@index([companyId], map: "Invoice_companyId_idx")
+  @@index([companyId, invoiceNumber], map: "Invoice_companyId_invoiceNumber_idx")
   @@index([customerId], map: "Invoice_customerId_fkey")
   @@index([deliveryChallanId], map: "Invoice_deliveryChallanId_fkey")
   @@index([salesOrderId], map: "Invoice_salesOrderId_fkey")
+  @@index([salespersonId], map: "Invoice_salespersonId_idx")
 }
 
 model invoiceitem {
@@ -826,6 +832,10 @@ model purchasebill {
   shippingZipCode     String?
   shippingCountry     String?
   customFields        String?                 @db.Text
+  carNumber           String?
+  manualReference     String?
+  salespersonId       Int?
+  salesperson         salesperson?            @relation(fields: [salespersonId], references: [id], onDelete: SetNull, map: "PurchaseBill_salespersonId_fkey")
   payment             payment[]
   company             company                 @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "PurchaseBill_companyId_fkey")
   goodsreceiptnote    goodsreceiptnote?       @relation(fields: [grnId], references: [id], onDelete: Cascade, map: "PurchaseBill_grnId_fkey")
@@ -837,10 +847,12 @@ model purchasebill {
   inventory_batch     inventory_batch[]
   allocations         paymentbillallocation[]
 
-  @@unique([companyId, billNumber], map: "PurchaseBill_companyId_billNumber_key")
+  @@index([companyId], map: "PurchaseBill_companyId_idx")
+  @@index([companyId, billNumber], map: "PurchaseBill_companyId_billNumber_idx")
   @@index([grnId], map: "PurchaseBill_grnId_fkey")
   @@index([purchaseOrderId], map: "PurchaseBill_purchaseOrderId_fkey")
   @@index([vendorId], map: "PurchaseBill_vendorId_fkey")
+  @@index([salespersonId], map: "PurchaseBill_salespersonId_idx")
 }
 
 model purchasebillitem {
@@ -1904,4 +1916,17 @@ model auditlog {
 
   @@index([companyId])
   @@index([userId])
+}
+
+model salesperson {
+  id           Int            @id @default(autoincrement())
+  name         String
+  phone        String?
+  email        String?
+  companyId    Int
+  company      company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoices     invoice[]
+  purchasebill purchasebill[]
+
+  @@index([companyId])
 }

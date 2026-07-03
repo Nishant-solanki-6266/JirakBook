@@ -6,7 +6,7 @@ import { AuthContext } from '../../../../context/AuthContext';
 import {
     Search, Plus, Pencil, Trash2, X, ChevronDown,
     FileText, ShoppingCart, Truck, Receipt, CreditCard,
-    CheckCircle2, Clock, ArrowRight, Eye, Printer, FilePlus, Check, ArrowLeft
+    CheckCircle2, Clock, ArrowRight, Eye, Printer, FilePlus, Check, ArrowLeft, AlertTriangle
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
@@ -33,10 +33,11 @@ import categoryService from '../../../../services/categoryService';
 import { uploadToCloudinary } from '../../../../utils/cloudinaryUpload';
 import { Upload, Loader2 } from 'lucide-react';
 import chartOfAccountsService from '../../../../services/chartOfAccountsService';
+import salespersonService from '../../../../services/salespersonService';
 
 
 const PurchaseBill = () => {
-    const { companySettings, formatCurrency, getTableHeader, getInvoiceLabel, getDocumentTitle } = useContext(CompanyContext);
+    const { companySettings, formatCurrency, getTableHeader, getInvoiceLabel, getDocumentTitle, getExchangeRateFor, getSyncRate } = useContext(CompanyContext);
     const { hasPermission } = useContext(AuthContext);
     const location = useLocation();
     const navigate = useNavigate();
@@ -59,6 +60,20 @@ const PurchaseBill = () => {
             setSelectedCurrency(companySettings.currency);
         }
     }, [companySettings]);
+
+    const handleCurrencyChange = async (cur) => {
+        setSelectedCurrency(cur);
+        if (cur === (companySettings?.currency || 'USD')) {
+            setExchangeRate(1.0);
+        } else {
+            try {
+                const rate = await getExchangeRateFor(cur, companySettings?.currency || 'USD');
+                setExchangeRate(rate.toFixed(6));
+            } catch (e) {
+                setExchangeRate(1.0);
+            }
+        }
+    };
 
     const formatDocCurrency = (amount, currencyCode) => {
         const docCurrency = currencyCode || selectedCurrency || companySettings?.currency || 'USD';
@@ -188,6 +203,7 @@ const PurchaseBill = () => {
     const [editingId, setEditingId] = useState(null);
     const [isViewMode, setIsViewMode] = useState(false);
     const [viewBill, setViewBill] = useState(null);
+    const viewRate = getSyncRate(viewBill?.currency || 'USD', companySettings?.currency || 'KWD');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteId, setDeleteId] = useState(null);
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -210,7 +226,8 @@ const PurchaseBill = () => {
         name: '', address: '', email: '', phone: '', logo: '', notes: '', terms: ''
     });
     const [billMeta, setBillMeta] = useState({
-        manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0]
+        manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0],
+        deliveryPersonName: '', deliveryPersonMobile: '', deliveryPersonEmail: ''
     });
     const [vendorId, setVendorId] = useState('');
     const [selectedVendorCreditPeriod, setSelectedVendorCreditPeriod] = useState(0);
@@ -222,6 +239,15 @@ const PurchaseBill = () => {
     const [terms, setTerms] = useState('');
     const [overallDiscount, setOverallDiscount] = useState(0);
     const [overallDiscountType, setOverallDiscountType] = useState('percentage');
+    const [salespersonsList, setSalespersonsList] = useState([]);
+    const [salespersonId, setSalespersonId] = useState('');
+    const [carNumber, setCarNumber] = useState('');
+    const [manualReference, setManualReference] = useState('');
+    const [shouldAutoOpenNext, setShouldAutoOpenNext] = useState(false);
+    const [showAddSalespersonModal, setShowAddSalespersonModal] = useState(false);
+    const [salespersonFormData, setSalespersonFormData] = useState({ name: '', phone: '', email: '' });
+    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+    const [duplicateRefToRetry, setDuplicateRefToRetry] = useState('');
     const [bankDetails, setBankDetails] = useState({
         accountName: '', bankName: '', accountNo: '', branch: '', ifsc: ''
     });
@@ -426,6 +452,7 @@ const PurchaseBill = () => {
 
             if (companyId) {
                 promises.push(companyService.getById(companyId));
+                promises.push(salespersonService.getAll(companyId));
             }
 
             const results = await Promise.all(promises);
@@ -434,12 +461,16 @@ const PurchaseBill = () => {
             const warehouseRes = results[2];
             const uomRes = results[3];
             const companyRes = companyId ? results[4] : null;
+            const salespersonRes = companyId ? results[5] : null;
 
             setVendors(vendorRes.data || vendorRes || []);
             setProducts(productRes.data || productRes || []);
             setWarehouses(warehouseRes.data || warehouseRes || []);
             if (uomRes && uomRes.success) {
                 setAllUoms(uomRes.data);
+            }
+            if (salespersonRes && salespersonRes.success) {
+                setSalespersonsList(salespersonRes.data || []);
             }
 
             if (companyRes && companyRes.data) {
@@ -841,7 +872,14 @@ const PurchaseBill = () => {
         setSelectedVendorCreditPeriod(0);
         setSelectedCurrency(companyDetails.currency || companySettings?.currency || 'USD');
         setExchangeRate(1.0);
-        setBillMeta({ manualNo: '', date: new Date().toISOString().split('T')[0], dueDate: new Date().toISOString().split('T')[0] });
+        setBillMeta({
+            manualNo: '',
+            date: new Date().toISOString().split('T')[0],
+            dueDate: new Date().toISOString().split('T')[0],
+            deliveryPersonName: '',
+            deliveryPersonMobile: '',
+            deliveryPersonEmail: ''
+        });
         let defWarehouseId = '';
         if (companySettings?.inventoryConfig) {
             try {
@@ -856,6 +894,9 @@ const PurchaseBill = () => {
             }
         }
         setItems([{ id: Date.now(), productId: '', warehouseId: defWarehouseId, qty: 1, uomId: '', rate: 0, tax: 0, discount: 0, total: 0, description: '' }]);
+        setSalespersonId('');
+        setCarNumber('');
+        setManualReference('');
         setNotes(companyDetails.notes || '');
         setTerms(companyDetails.termsPurchase || companyDetails.terms || '');
         setCustomFieldValues({});
@@ -1182,10 +1223,27 @@ const PurchaseBill = () => {
                 setVendorId(billToEdit.vendorId);
                 const vendorObj = vendors.find(v => v.id == billToEdit.vendorId);
                 setSelectedVendorCreditPeriod(vendorObj?.creditPeriod || 0);
+                let fieldValues = {};
+                if (billToEdit.customFields) {
+                    try {
+                        fieldValues = typeof billToEdit.customFields === 'string'
+                            ? JSON.parse(billToEdit.customFields)
+                            : billToEdit.customFields;
+                    } catch (e) {
+                        console.error('Error parsing custom fields on edit:', e);
+                    }
+                }
+                setCustomFieldValues(fieldValues);
+                setSalespersonId(billToEdit.salespersonId || '');
+                setCarNumber(billToEdit.carNumber || '');
+                setManualReference(billToEdit.manualReference || '');
                 setBillMeta({
                     manualNo: billToEdit.billNumber,
                     date: billToEdit.date.split('T')[0],
-                    dueDate: billToEdit.dueDate ? billToEdit.dueDate.split('T')[0] : ''
+                    dueDate: billToEdit.dueDate ? billToEdit.dueDate.split('T')[0] : '',
+                    deliveryPersonName: fieldValues.deliveryPersonName || '',
+                    deliveryPersonMobile: fieldValues.deliveryPersonMobile || '',
+                    deliveryPersonEmail: fieldValues.deliveryPersonEmail || ''
                 });
                 setNotes(billToEdit.notes || '');
 
@@ -1205,17 +1263,6 @@ const PurchaseBill = () => {
                     }));
                     setItems(mappedItems);
                 }
-                let fieldValues = {};
-                if (billToEdit.customFields) {
-                    try {
-                        fieldValues = typeof billToEdit.customFields === 'string'
-                            ? JSON.parse(billToEdit.customFields)
-                            : billToEdit.customFields;
-                    } catch (e) {
-                        console.error('Error parsing custom fields on edit:', e);
-                    }
-                }
-                setCustomFieldValues(fieldValues);
                 setSelectedPhotos(fieldValues?._attachments?.photos || []);
                 setSelectedFiles(fieldValues?._attachments?.files || []);
                 setOverallDiscount(billToEdit.overallDiscount || 0);
@@ -1299,7 +1346,21 @@ const PurchaseBill = () => {
         return isNaN(num) ? 0 : num;
     };
 
-    const handleSave = async () => {
+    const incrementString = (str) => {
+        if (!str) return '1';
+        const match = str.match(/(\d+)$/);
+        if (match) {
+            const numStr = match[1];
+            const nextNum = parseInt(numStr, 10) + 1;
+            const paddedNum = String(nextNum).padStart(numStr.length, '0');
+            return str.substring(0, str.length - numStr.length) + paddedNum;
+        } else {
+            return str + '1';
+        }
+    };
+
+    const handleSave = async (forceAllowDuplicate = false, overrideManualRef = null) => {
+        const isForce = forceAllowDuplicate === true;
         if (!vendorId) {
             toast.error("Please select a vendor");
             return;
@@ -1310,6 +1371,9 @@ const PurchaseBill = () => {
         const companyId = GetCompanyId();
         const customFieldsPayload = {
             ...customFieldValues,
+            deliveryPersonName: billMeta.deliveryPersonName,
+            deliveryPersonMobile: billMeta.deliveryPersonMobile,
+            deliveryPersonEmail: billMeta.deliveryPersonEmail,
             _attachments: {
                 photos: selectedPhotos,
                 files: selectedFiles
@@ -1323,6 +1387,9 @@ const PurchaseBill = () => {
             grnId: sourceData?.grnId || linkedSource?.grnId || null,
             vendorId: parseInt(vendorId),
             billNumber: billMeta.manualNo || `BILL-${Date.now()}`,
+            manualReference: overrideManualRef !== null ? overrideManualRef : (manualReference || null),
+            salespersonId: salespersonId ? parseInt(salespersonId) : null,
+            carNumber: carNumber || null,
             date: billMeta.date,
             dueDate: billMeta.dueDate,
             totalAmount: safeFloat(totals.total),
@@ -1370,14 +1437,20 @@ const PurchaseBill = () => {
                 setShowAddModal(false);
                 fetchBills();
             } else {
-                await purchaseBillService.createBill(payload);
+                await purchaseBillService.createBill(payload, isForce);
                 toast.success("Bill created successfully");
                 setShowAddModal(false);
                 fetchBills();
             }
         } catch (error) {
             console.error(error);
-            toast.error(error.message || "Failed to save bill");
+            if (error.response?.data?.isDuplicate) {
+                const currentRef = overrideManualRef !== null ? overrideManualRef : (manualReference || '');
+                setDuplicateRefToRetry(currentRef);
+                setShowDuplicateModal(true);
+            } else {
+                toast.error(error.response?.data?.message || error.message || "Failed to save bill");
+            }
         }
     };
 
@@ -1643,6 +1716,11 @@ const PurchaseBill = () => {
                                                     <div className="invoice-meta-row">
                                                         <span className="invoice-label">Bill No:</span> {viewBill.billNumber}
                                                     </div>
+                                                    {viewBill.manualReference && (
+                                                        <div className="invoice-meta-row">
+                                                            <span className="invoice-label">Manual Ref:</span> {viewBill.manualReference}
+                                                        </div>
+                                                    )}
                                                     <div className="invoice-meta-row">
                                                         <span className="invoice-label">Date:</span> {new Date(viewBill.date).toLocaleDateString()}
                                                     </div>
@@ -1655,7 +1733,7 @@ const PurchaseBill = () => {
                                                                 <span className="invoice-label">Currency:</span> {viewBill.currency}
                                                             </div>
                                                             <div className="invoice-meta-row">
-                                                                <span className="invoice-label">Ex. Rate:</span> 1 {viewBill.currency} = {viewBill.exchangeRate || 1.0} {companySettings?.currency || 'INR'}
+                                                                <span className="invoice-label">Ex. Rate:</span> 1 {viewBill.currency} = {Number(viewRate).toFixed(4)} {companySettings?.currency || 'INR'}
                                                             </div>
                                                         </>
                                                     )}
@@ -1759,13 +1837,40 @@ const PurchaseBill = () => {
                                                 {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || 'N/A'}</td>}
                                                 {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
                                                 <td style={{ textAlign: 'right' }}>
-                                                    {iIdx === 0 ? formatCurrency(bill.totalAmount) : ''}
+                                                    {iIdx === 0 ? (
+                                                        <>
+                                                            {formatDocCurrency(bill.totalAmount, bill.currency)}
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency(bill.totalAmount * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : ''}
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
-                                                    {iIdx === 0 ? formatCurrency(bill.totalAmount - bill.balanceAmount) : ''}
+                                                    {iIdx === 0 ? (
+                                                        <>
+                                                            {formatDocCurrency(bill.totalAmount - bill.balanceAmount, bill.currency)}
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency((bill.totalAmount - bill.balanceAmount) * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : ''}
                                                 </td>
                                                 <td style={{ textAlign: 'right', fontWeight: iIdx === 0 ? 600 : 400 }}>
-                                                    {iIdx === 0 ? formatCurrency(bill.balanceAmount) : ''}
+                                                    {iIdx === 0 ? (
+                                                        <>
+                                                            {formatDocCurrency(bill.balanceAmount, bill.currency)}
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                                <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                    ({formatDocCurrency(bill.balanceAmount * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : ''}
                                                 </td>
                                             </tr>
                                         ));
@@ -1797,9 +1902,25 @@ const PurchaseBill = () => {
                                             {getInvoiceLabel('showWarehouse') !== false && <td>{item.warehouse?.name || '-'}</td>}
                                             {getInvoiceLabel('showQty') !== false && <td style={{ textAlign: 'center' }}>{item.quantity}</td>}
                                             {getInvoiceLabel('showUom') !== false && <td style={{ textAlign: 'center' }}>{item.uom?.unitName || allUoms.find(u => u.id === item.uomId)?.unitName || ''}</td>}
-                                            {getInvoiceLabel('showRate') !== false && <td style={{ textAlign: 'right' }}>{formatDocCurrency(item.rate, viewBill.currency)}</td>}
+                                            {getInvoiceLabel('showRate') !== false && (
+                                                <td style={{ textAlign: 'right' }}>
+                                                    {formatDocCurrency(item.rate, viewBill.currency)}
+                                                    {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                            ({formatDocCurrency(item.rate * viewRate, companySettings?.currency || 'KWD')})
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            )}
                                             {getInvoiceLabel('showTax') !== false && <td style={{ textAlign: 'right' }}>{item.taxRate}%</td>}
-                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{formatDocCurrency(item.amount, viewBill.currency)}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                                                {formatDocCurrency(item.amount, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                        ({formatDocCurrency(item.amount * viewRate, companySettings?.currency || 'KWD')})
+                                                    </div>
+                                                )}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1811,51 +1932,123 @@ const PurchaseBill = () => {
                             <div className="invoice-totals">
                                 {viewBill.isStatement ? (
                                     <>
-                                        <div className="invoice-total-row">
-                                            <span className="invoice-label">Total Bill Amount:</span>
-                                            <span>{formatCurrency(viewBill.totalBillAmount)}</span>
+                                        <div className="invoice-total-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <span className="invoice-label">Total Bill Amount:</span>
+                                                <span style={{ fontWeight: '600' }}>{formatCurrency(viewBill.totalBillAmount)}</span>
+                                            </div>
+                                            {Object.keys(viewBill.currencyTotals || {}).map(curr => {
+                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                if (curr === baseCurr) return null;
+                                                const originalTotal = viewBill.bills.filter(b => (b.currency || baseCurr) === curr).reduce((sum, b) => sum + b.totalAmount, 0);
+                                                return (
+                                                    <span key={`tot-${curr}`} style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                                        ({formatDocCurrency(originalTotal, curr)})
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="invoice-final-total">
-                                            <span>Total Amount Paid:</span>
-                                            <span style={{ color: '#16a34a' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
+                                        <div className="invoice-final-total" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', borderTop: '1px solid #edf2f7', paddingTop: '8px', marginTop: '4px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <span>Total Amount Paid:</span>
+                                                <span style={{ color: '#16a34a', fontWeight: '700' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
+                                            </div>
+                                            {Object.keys(viewBill.currencyTotals || {}).map(curr => {
+                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                if (curr === baseCurr) return null;
+                                                const originalPaid = viewBill.bills.filter(b => (b.currency || baseCurr) === curr).reduce((sum, b) => sum + (b.totalAmount - b.balanceAmount), 0);
+                                                return (
+                                                    <span key={`paid-${curr}`} style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                                        ({formatDocCurrency(originalPaid, curr)})
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="invoice-final-total" style={{ borderTop: '1px solid #ef4444', marginTop: '5px', paddingTop: '5px', color: '#ef4444' }}>
-                                            <span>Total Balance Due:</span>
-                                            <span>{formatCurrency(viewBill.balanceAmount)}</span>
+                                        <div className="invoice-final-total" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', borderTop: '1px solid #ef4444', marginTop: '6px', paddingTop: '6px', color: '#ef4444' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                                <span>Total Balance Due:</span>
+                                                <span style={{ fontWeight: '700' }}>{formatCurrency(viewBill.balanceAmount)}</span>
+                                            </div>
+                                            {Object.keys(viewBill.currencyTotals || {}).map(curr => {
+                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                if (curr === baseCurr) return null;
+                                                const originalBalance = viewBill.currencyTotals[curr];
+                                                return (
+                                                    <span key={`bal-${curr}`} style={{ fontSize: '0.8rem', color: '#ef4444' }}>
+                                                        ({formatDocCurrency(originalBalance, curr)})
+                                                    </span>
+                                                );
+                                            })}
                                         </div>
                                     </>
                                 ) : (
                                     <>
                                         <div className="invoice-total-row">
                                             <span className="invoice-label">{getInvoiceLabel('subTotal')}:</span>
-                                            <span>{formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0)) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row">
                                             <span className="invoice-label">Discount:</span>
-                                            <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
+                                            <span>
+                                                <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        (- {formatDocCurrency((viewBill.discountAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row">
                                             <span className="invoice-label">{getInvoiceLabel('tax')}:</span>
-                                            <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
+                                            <span>
+                                                <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        (+ {formatDocCurrency((viewBill.taxAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-final-total">
                                             <span>{getInvoiceLabel('total')}:</span>
-                                            <span>{formatDocCurrency(viewBill.totalAmount, viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.totalAmount, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.totalAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row" style={{ marginTop: '5px', fontWeight: '600', color: '#16a34a' }}>
                                             <span className="invoice-label">Amount Paid:</span>
-                                            <span>{formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.paidAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                         <div className="invoice-total-row" style={{ borderTop: '1px solid #e2e8f0', marginTop: '5px', paddingTop: '5px', fontWeight: '700', color: '#ef4444' }}>
                                             <span className="invoice-label">Balance Due:</span>
-                                            <span>{formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}</span>
+                                            <span>
+                                                {formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                        ({formatDocCurrency((viewBill.balanceAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
-                                        {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
-                                            <div className="invoice-total-row" style={{ borderTop: '1px dashed #cbd5e1', marginTop: '8px', paddingTop: '8px', fontWeight: '700', color: '#475569' }}>
-                                                <span className="invoice-label">Base Total ({companySettings?.currency || 'INR'}):</span>
-                                                <span>{formatDocCurrency((viewBill.totalAmount || 0) * (viewBill.exchangeRate || 1.0), companySettings?.currency || 'INR')}</span>
-                                            </div>
-                                        )}
                                     </>
                                 )}
                             </div>
@@ -2082,14 +2275,25 @@ const PurchaseBill = () => {
                                             latestDueDate: b.dueDate
                                         };
                                     }
+                                    const rate = getSyncRate(b.currency || 'USD', companySettings?.currency || 'KWD');
                                     groupedMap[key].bills.push(b);
-                                    groupedMap[key].totalBillAmount += b.totalAmount;
-                                    groupedMap[key].balanceAmount += b.balanceAmount;
+                                    groupedMap[key].totalBillAmount += b.totalAmount * rate;
+                                    groupedMap[key].balanceAmount += b.balanceAmount * rate;
+
+                                    const curr = b.currency || companySettings?.currency || 'KWD';
+                                    if (!groupedMap[key].currencyTotals) {
+                                        groupedMap[key].currencyTotals = {};
+                                    }
+                                    if (!groupedMap[key].currencyTotals[curr]) {
+                                        groupedMap[key].currencyTotals[curr] = 0;
+                                    }
+                                    groupedMap[key].currencyTotals[curr] += b.balanceAmount;
 
                                     if (b.purchasereturn) {
                                         b.purchasereturn.forEach(ret => {
                                             groupedMap[key].returns.push(ret);
-                                            groupedMap[key].totalReturnAmount += ret.totalAmount || 0;
+                                            const retRate = getSyncRate(ret.currency || b.currency || 'USD', companySettings?.currency || 'KWD');
+                                            groupedMap[key].totalReturnAmount += (ret.totalAmount || 0) * retRate;
                                         });
                                     }
 
@@ -2131,7 +2335,38 @@ const PurchaseBill = () => {
                                             <td> {group.latestDueDate ? new Date(group.latestDueDate).toLocaleDateString() : 'N/A'}</td>
                                             <td className="font-bold">
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                    <span>{formatCurrency(group.balanceAmount)}</span>
+                                                    {(() => {
+                                                        const currs = Object.keys(group.currencyTotals || {});
+                                                        const baseCurr = companySettings?.currency || 'KWD';
+                                                        if (currs.length === 1) {
+                                                            const curr = currs[0];
+                                                            const originalAmount = group.currencyTotals[curr];
+                                                            if (curr !== baseCurr) {
+                                                                return (
+                                                                    <span>
+                                                                        {formatDocCurrency(originalAmount, curr)}
+                                                                        <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: '#64748b', marginLeft: '6px' }}>
+                                                                            ({formatDocCurrency(group.balanceAmount, baseCurr)})
+                                                                        </span>
+                                                                    </span>
+                                                                );
+                                                            }
+                                                        } else if (currs.length > 1) {
+                                                            return (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                    {currs.map(curr => (
+                                                                        <span key={curr} style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                                                            {formatDocCurrency(group.currencyTotals[curr], curr)}
+                                                                        </span>
+                                                                    ))}
+                                                                    <span style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '2px', marginTop: '2px' }}>
+                                                                        Total: {formatDocCurrency(group.balanceAmount, baseCurr)}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return <span>{formatCurrency(group.balanceAmount)}</span>;
+                                                    })()}
                                                     {group.totalReturnAmount > 0 && (
                                                         <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '700', whiteSpace: 'nowrap' }}>
                                                             Return Impact: -{formatCurrency(group.totalReturnAmount)}
@@ -2196,8 +2431,22 @@ const PurchaseBill = () => {
                                                                             <td style={{ padding: '10px', fontWeight: 'bold', color: '#64748b' }}>BILL</td>
                                                                             <td style={{ padding: '10px', fontWeight: 'bold' }}>{pb.billNumber}</td>
                                                                             <td style={{ padding: '10px' }}>{new Date(pb.date).toLocaleDateString()}</td>
-                                                                            <td style={{ padding: '10px' }}>{formatDocCurrency(pb.totalAmount, pb.currency)}</td>
-                                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{formatDocCurrency(pb.balanceAmount, pb.currency)}</td>
+                                                                            <td style={{ padding: '10px' }}>
+                                                                                {formatDocCurrency(pb.totalAmount, pb.currency)}
+                                                                                {pb.currency && pb.currency !== (companySettings?.currency || 'KWD') && (
+                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                        ({formatDocCurrency(pb.totalAmount * (pb.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
+                                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>
+                                                                                {formatDocCurrency(pb.balanceAmount, pb.currency)}
+                                                                                {pb.currency && pb.currency !== (companySettings?.currency || 'KWD') && (
+                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                        ({formatDocCurrency(pb.balanceAmount * (pb.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
                                                                             <td style={{ padding: '10px' }}>
                                                                                 <select
                                                                                     value={pb.manualStatus ? pb.status : 'AUTO'}
@@ -2298,11 +2547,67 @@ const PurchaseBill = () => {
                             {/* Horizontal Metadata Grid */}
                             <div className="PBILL-meta-horizontal-grid">
                                 <div className="PBILL-meta-col">
-                                    <label>Bill Number</label>
+                                    <label>Manual Ref</label>
                                     <input type="text"
-                                        value={billMeta.manualNo || nextBillNumber}
+                                        value={manualReference}
+                                        onChange={(e) => setManualReference(e.target.value)}
+                                        placeholder="e.g. REF-001"
+                                        className="PBILL-compact-input" />
+                                </div>
+                                <div className="PBILL-meta-col">
+                                    <label>Bill Number *</label>
+                                    <input type="text"
+                                        value={billMeta.manualNo}
                                         onChange={(e) => setBillMeta({ ...billMeta, manualNo: e.target.value })}
-                                        placeholder="Auto-Generated"
+                                        placeholder="Bill Number"
+
+                                        className="PBILL-compact-input" />
+                                </div>
+                                <div className="PBILL-meta-col">
+                                    <label>Agent / Salesperson</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <select
+                                            value={salespersonId}
+                                            onChange={(e) => setSalespersonId(e.target.value)}
+                                            className="PBILL-compact-select"
+                                            style={{ flex: 1 }}
+                                        >
+                                            <option value="">-- Select Agent --</option>
+                                            {salespersonsList.map(s => (
+                                                <option key={s.id} value={s.id}>{s.name}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSalespersonFormData({ name: '', phone: '', email: '' });
+                                                setShowAddSalespersonModal(true);
+                                            }}
+                                            style={{
+                                                backgroundColor: '#3b82f6',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                fontWeight: 'bold',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                height: '32px',
+                                                width: '32px'
+                                            }}
+                                        >
+                                            <Plus size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="PBILL-meta-col">
+                                    <label>Car Number</label>
+                                    <input type="text"
+                                        value={carNumber}
+                                        onChange={(e) => setCarNumber(e.target.value)}
+                                        placeholder="Car/Gaadi No."
                                         className="PBILL-compact-input" />
                                 </div>
                                 <div className="PBILL-meta-col">
@@ -2325,13 +2630,7 @@ const PurchaseBill = () => {
                                     <label>Currency</label>
                                     <select
                                         value={selectedCurrency}
-                                        onChange={(e) => {
-                                            const cur = e.target.value;
-                                            setSelectedCurrency(cur);
-                                            if (cur === (companySettings?.currency || 'INR')) {
-                                                setExchangeRate(1.0);
-                                            }
-                                        }}
+                                        onChange={(e) => handleCurrencyChange(e.target.value)}
                                         className="PBILL-compact-select"
                                     >
                                         <option value="INR">INR (₹)</option>
@@ -2356,6 +2655,30 @@ const PurchaseBill = () => {
                                             className="PBILL-compact-input" />
                                     </div>
                                 )}
+                                <div className="PBILL-meta-col">
+                                    <label>Del. Person Name</label>
+                                    <input type="text"
+                                        value={billMeta.deliveryPersonName || ''}
+                                        onChange={(e) => setBillMeta({ ...billMeta, deliveryPersonName: e.target.value })}
+                                        placeholder="Enter name"
+                                        className="PBILL-compact-input" />
+                                </div>
+                                <div className="PBILL-meta-col">
+                                    <label>Del. Person Mobile</label>
+                                    <input type="text"
+                                        value={billMeta.deliveryPersonMobile || ''}
+                                        onChange={(e) => setBillMeta({ ...billMeta, deliveryPersonMobile: e.target.value })}
+                                        placeholder="Enter mobile"
+                                        className="PBILL-compact-input" />
+                                </div>
+                                <div className="PBILL-meta-col">
+                                    <label>Del. Person Email</label>
+                                    <input type="text"
+                                        value={billMeta.deliveryPersonEmail || ''}
+                                        onChange={(e) => setBillMeta({ ...billMeta, deliveryPersonEmail: e.target.value })}
+                                        placeholder="Enter email"
+                                        className="PBILL-compact-input" />
+                                </div>
                             </div>
 
                             {/* Vendor & Address Grid */}
@@ -2903,10 +3226,100 @@ const PurchaseBill = () => {
 
                             <div className="PBILL-form-actions">
                                 <button className="PBILL-btn-cancel" onClick={() => setShowAddModal(false)}>Discard changes</button>
-                                <button className="PBILL-btn-primary" onClick={handleSave}>
+                                <button className="PBILL-btn-primary" onClick={() => handleSave(false)}>
                                     {editingId ? 'Update Bill' : 'Confirm & Save Bill'}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showDuplicateModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999
+                }}>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        width: '400px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        textAlign: 'center',
+                        fontFamily: 'inherit'
+                    }}>
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '50%',
+                            backgroundColor: '#fee2e2',
+                            color: '#ef4444',
+                            marginBottom: '16px'
+                        }}>
+                            <AlertTriangle size={24} />
+                        </div>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: '1.2rem', fontWeight: 'bold', color: '#1f2937' }}>
+                            Duplicate Manual Number
+                        </h3>
+                        <p style={{ margin: '0 0 24px 0', fontSize: '0.9rem', color: '#4b5563', lineHeight: '1.5' }}>
+                            This is a duplicate manual number. Do you want to change it?
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                            <button
+                                onClick={() => {
+                                    setShowDuplicateModal(false);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #d1d5db',
+                                    backgroundColor: '#ffffff',
+                                    color: '#374151',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
+                            >
+                                Yes
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setShowDuplicateModal(false);
+                                    const nextRef = incrementString(duplicateRefToRetry);
+                                    setManualReference(nextRef);
+                                    await handleSave(false, nextRef);
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px 16px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    backgroundColor: '#10b981',
+                                    color: '#ffffff',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+                            >
+                                No
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -4049,6 +4462,119 @@ const PurchaseBill = () => {
                                 <button type="submit" className="Zirak-UOM-save-btn">Save</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {showAddSalespersonModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999
+                }}>
+                    <div style={{
+                        backgroundColor: '#ffffff',
+                        padding: '20px',
+                        borderRadius: '8px',
+                        width: '350px',
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                    }}>
+                        <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 'bold', color: '#1f2937' }}>Add New Salesperson</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '4px' }}>Name *</label>
+                                <input
+                                    type="text"
+                                    value={salespersonFormData.name}
+                                    onChange={(e) => setSalespersonFormData({ ...salespersonFormData, name: e.target.value })}
+                                    className="PBILL-compact-input"
+                                    style={{ width: '100%' }}
+                                    placeholder="Salesperson Name"
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '4px' }}>Phone / Number</label>
+                                <input
+                                    type="text"
+                                    value={salespersonFormData.phone}
+                                    onChange={(e) => setSalespersonFormData({ ...salespersonFormData, phone: e.target.value })}
+                                    className="PBILL-compact-input"
+                                    style={{ width: '100%' }}
+                                    placeholder="Phone number"
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#4b5563', marginBottom: '4px' }}>Email</label>
+                                <input
+                                    type="email"
+                                    value={salespersonFormData.email}
+                                    onChange={(e) => setSalespersonFormData({ ...salespersonFormData, email: e.target.value })}
+                                    className="PBILL-compact-input"
+                                    style={{ width: '100%' }}
+                                    placeholder="Email address"
+                                />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+                            <button
+                                type="button"
+                                onClick={() => setShowAddSalespersonModal(false)}
+                                style={{
+                                    padding: '6px 12px',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#ffffff',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    if (!salespersonFormData.name.trim()) {
+                                        toast.error("Name is required");
+                                        return;
+                                    }
+                                    try {
+                                        const companyId = GetCompanyId();
+                                        const res = await salespersonService.create({
+                                            ...salespersonFormData,
+                                            companyId: parseInt(companyId)
+                                        });
+                                        if (res.success) {
+                                            toast.success("Salesperson added successfully");
+                                            setSalespersonId(res.data.id);
+                                            // Refresh list
+                                            const listRes = await salespersonService.getAll(companyId);
+                                            if (listRes.success) setSalespersonsList(listRes.data);
+                                            setShowAddSalespersonModal(false);
+                                        } else {
+                                            toast.error(res.message || "Failed to create salesperson");
+                                        }
+                                    } catch (e) {
+                                        toast.error(e.message || "Failed to create salesperson");
+                                    }
+                                }}
+                                style={{
+                                    padding: '6px 12px',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    backgroundColor: '#2563eb',
+                                    color: '#ffffff',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Save
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

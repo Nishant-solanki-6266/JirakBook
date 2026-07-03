@@ -446,7 +446,9 @@ exports.Prisma.InvoiceScalarFieldEnum = {
   shippingState: 'shippingState',
   shippingZipCode: 'shippingZipCode',
   shippingCountry: 'shippingCountry',
-  customFields: 'customFields'
+  customFields: 'customFields',
+  carNumber: 'carNumber',
+  salespersonId: 'salespersonId'
 };
 
 exports.Prisma.InvoiceitemScalarFieldEnum = {
@@ -672,7 +674,10 @@ exports.Prisma.PurchasebillScalarFieldEnum = {
   shippingState: 'shippingState',
   shippingZipCode: 'shippingZipCode',
   shippingCountry: 'shippingCountry',
-  customFields: 'customFields'
+  customFields: 'customFields',
+  carNumber: 'carNumber',
+  manualReference: 'manualReference',
+  salespersonId: 'salespersonId'
 };
 
 exports.Prisma.PurchasebillitemScalarFieldEnum = {
@@ -1264,6 +1269,14 @@ exports.Prisma.AuditlogScalarFieldEnum = {
   createdAt: 'createdAt'
 };
 
+exports.Prisma.SalespersonScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  phone: 'phone',
+  email: 'email',
+  companyId: 'companyId'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -1513,7 +1526,8 @@ exports.Prisma.ModelName = {
   receiptinvoiceallocation: 'receiptinvoiceallocation',
   paymentbillallocation: 'paymentbillallocation',
   transaction_numbering: 'transaction_numbering',
-  auditlog: 'auditlog'
+  auditlog: 'auditlog',
+  salesperson: 'salesperson'
 };
 
 /**

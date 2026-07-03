@@ -48,9 +48,9 @@ const adjustInvoiceWithReturns = (invoice) => {
             const ret = returnedItemsMap[item.productId];
             let adjustedQty = item.quantity;
             let adjustedAmt = item.amount;
-            
+
             const originalQty = item.originalQuantity !== undefined ? item.originalQuantity : item.quantity;
-            
+
             if (ret) {
                 adjustedQty = Math.max(0, item.quantity - ret.quantity);
                 const itemRate = parseFloat(item.rate) || 0;
@@ -62,14 +62,14 @@ const adjustInvoiceWithReturns = (invoice) => {
                 const lineTax = (lineTaxable * itemTaxRate) / 100;
                 adjustedAmt = lineTaxable + lineTax;
             }
-            
+
             const itemRate = parseFloat(item.rate) || 0;
             const itemDiscount = parseFloat(item.discount || 0) || 0;
             const itemTaxRate = parseFloat(item.taxRate) || 0;
 
             const lineGross = adjustedQty * itemRate;
             newSubtotal += lineGross;
-            
+
             const lineTaxable = Math.max(0, lineGross - itemDiscount);
             const lineTax = (lineTaxable * itemTaxRate) / 100;
             newTaxAmount += lineTax;
@@ -169,15 +169,25 @@ const createInvoice = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Please provide all required fields' });
         }
 
-        // Pre-flight: Check if this invoice number / voucher number is already in use
-        const existingInvoice = await prisma.invoice.findFirst({
-            where: { companyId: parseInt(companyId), invoiceNumber }
-        });
-        if (existingInvoice) {
-            return res.status(400).json({
-                success: false,
-                message: `Invoice number '${invoiceNumber}' already exists. Please use a unique invoice number.`
+        // Pre-flight: Check if this manual reference is already in use
+        if (manualReference && req.query.allowDuplicate !== 'true') {
+            const existingManual = await prisma.invoice.findFirst({
+                where: { companyId: parseInt(companyId), manualReference }
             });
+            if (existingManual) {
+                let suffix = 1;
+                let nextUniqueRef = `${manualReference}-${suffix}`;
+                while (await prisma.invoice.findFirst({ where: { companyId: parseInt(companyId), manualReference: nextUniqueRef } })) {
+                    suffix++;
+                    nextUniqueRef = `${manualReference}-${suffix}`;
+                }
+                return res.status(400).json({
+                    success: false,
+                    isDuplicate: true,
+                    nextUniqueRef,
+                    message: `Manual Reference '${manualReference}' already exists.`
+                });
+            }
         }
 
         const existingJournal = await prisma.journalentry.findFirst({
@@ -298,6 +308,8 @@ const createInvoice = async (req, res) => {
             const invoice = await tx.invoice.create({
                 data: {
                     customFields: req.body.customFields ? (typeof req.body.customFields === 'string' ? req.body.customFields : JSON.stringify(req.body.customFields)) : null,
+                    salespersonId: req.body.salespersonId ? parseInt(req.body.salespersonId) : null,
+                    carNumber: req.body.carNumber || null,
                     invoiceNumber,
                     manualReference,
                     date: new Date(date),
@@ -359,7 +371,7 @@ const createInvoice = async (req, res) => {
                         const allocatedSum = receipt.allocations.reduce((sum, a) => sum + a.amount, 0);
                         const availableUnallocated = receipt.amount - allocatedSum;
                         const adjustAmt = Math.min(parseFloat(adj.amount), availableUnallocated);
-                        
+
                         if (adjustAmt > 0) {
                             // Create allocation record
                             await tx.receiptinvoiceallocation.create({
@@ -439,7 +451,7 @@ const createInvoice = async (req, res) => {
                             });
                             const transUom = item.uomId ? await tx.uom.findUnique({ where: { id: item.uomId } }) : null;
                             const invBaseQty = convertToBaseQuantity(item.quantity, transUom, prod?.uom);
-                            
+
                             const key = `${item.productId}_${item.warehouseId}`;
                             const challanHandledQty = challanQtyMap[key] || 0;
 
@@ -453,7 +465,7 @@ const createInvoice = async (req, res) => {
                                         update: { reservedQuantity: { decrement: qtyToClear }, quantity: { decrement: qtyToClear } }
                                     });
                                 }
-                                
+
                                 // The remaining 'extra' quantity directly ISSUED (decremented) from stock
                                 const extraQty = invBaseQty - qtyToClear;
                                 if (extraQty > 0) {
@@ -463,7 +475,7 @@ const createInvoice = async (req, res) => {
                                         update: { quantity: { decrement: extraQty } }
                                     });
                                 }
-                                
+
                                 challanQtyMap[key] -= qtyToClear;
 
                                 await tx.inventorytransaction.create({
@@ -892,6 +904,7 @@ const getInvoices = async (req, res) => {
                 where: { companyId: parseInt(companyId) },
                 include: {
                     customer: { select: { id: true, name: true, email: true, ledgerId: true } },
+                    salesperson: true,
                     invoiceitem: {
                         include: {
                             product: true,
@@ -1055,6 +1068,7 @@ const getInvoiceById = async (req, res) => {
         let invoice = await prisma.invoice.findFirst({
             where: { id: parsedId, companyId: parseInt(companyId) },
             include: {
+                salesperson: true,
                 invoiceitem: {
                     include: {
                         product: true,
@@ -1418,7 +1432,7 @@ const updateInvoice = async (req, res) => {
                         const allocatedSum = receipt.allocations.reduce((sum, a) => sum + a.amount, 0);
                         const availableUnallocated = receipt.amount - allocatedSum;
                         const adjustAmt = Math.min(parseFloat(adj.amount), availableUnallocated);
-                        
+
                         if (adjustAmt > 0) {
                             await tx.receiptinvoiceallocation.create({
                                 data: {
@@ -1438,6 +1452,8 @@ const updateInvoice = async (req, res) => {
                 where: { id: parseInt(id) },
                 data: {
                     customFields: req.body.customFields !== undefined ? (typeof req.body.customFields === 'string' ? req.body.customFields : JSON.stringify(req.body.customFields)) : undefined,
+                    salespersonId: req.body.salespersonId !== undefined ? (req.body.salespersonId ? parseInt(req.body.salespersonId) : null) : undefined,
+                    carNumber: req.body.carNumber !== undefined ? req.body.carNumber : undefined,
                     invoiceNumber: data.invoiceNumber,
                     manualReference: data.manualReference,
                     date: data.date ? new Date(data.date) : undefined,
@@ -1988,6 +2004,7 @@ const getPublicInvoiceById = async (req, res) => {
         const invoice = await prisma.invoice.findUnique({
             where: { id: parsedId },
             include: {
+                salesperson: true,
                 invoiceitem: {
                     include: {
                         product: true,
