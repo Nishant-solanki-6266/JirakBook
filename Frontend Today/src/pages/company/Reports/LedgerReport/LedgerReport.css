@@ -318,3 +318,87 @@
         min-width: 600px;
     }
 }
+
+/* ============================
+   HOVER ITEM DETAILS POP-UP
+   ============================ */
+.Ledger-hover-popup {
+    position: fixed;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.96);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: #f8fafc;
+    padding: 12px 14px;
+    width: 380px;
+    max-width: 90vw;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+    font-size: 0.8rem;
+    transition: opacity 0.15s ease-in-out;
+    opacity: 0;
+}
+
+.Ledger-hover-popup.visible {
+    opacity: 1;
+}
+
+.Ledger-popup-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #4ade80; /* Green highlight matching layout */
+    display: flex;
+    justify-content: space-between;
+}
+
+.Ledger-popup-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.Ledger-popup-table th {
+    background: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 4px 6px;
+    text-align: left;
+}
+
+.Ledger-popup-table td {
+    padding: 6px;
+    color: #e2e8f0;
+    font-size: 0.78rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.Ledger-popup-table tr:last-child td {
+    border-bottom: none;
+}
+
+.Ledger-popup-total {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 8px;
+    padding-top: 6px;
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: #f8fafc;
+}
+
+/* Hoverable row highlight visual indicator */
+.Ledger-hoverable-row {
+    position: relative;
+    cursor: help;
+}
+
+.Ledger-hoverable-row:hover {
+    background-color: #f1f5f9;
+}

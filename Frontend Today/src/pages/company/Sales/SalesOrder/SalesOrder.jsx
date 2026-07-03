@@ -1613,13 +1613,12 @@ const SalesOrder = () => {
                                         {/* Items Table */}
                                         <div className="SalesOrder-items-section-new">
                                             {creationMode === 'direct' && (
-                                                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '15px' }}>
                                                     <button className="SalesOrder-btn-add-row" onClick={addItem} style={{ marginBottom: 0 }}>
                                                         <Plus size={14} /> Add Line Item
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        className="SalesOrder-btn-add-row"
                                                         onClick={() => {
                                                             setProductWarehouseRows(allWarehouses.map(wh => ({
                                                                 id: wh.id,
@@ -1632,8 +1631,16 @@ const SalesOrder = () => {
                                                         }}
                                                         style={{
                                                             backgroundColor: '#22c55e',
-                                                            borderColor: '#22c55e',
                                                             color: '#ffffff',
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            padding: '6px 14px',
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: 'bold',
+                                                            cursor: 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
                                                             marginBottom: 0
                                                         }}
                                                     >
