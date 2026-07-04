@@ -113,6 +113,7 @@ model company {
   zip                   String?
   country               String?
   currency              String?                 @default("USD")
+  originalCurrency      String?                 @default("USD")
   bankName              String?
   accountHolder         String?
   accountNumber         String?

@@ -28,6 +28,9 @@ const InventorySummary = () => {
     const [showFinishedOnly, setShowFinishedOnly] = useState(false); // Finished stock = Out of Stock
     const [warehouses, setWarehouses] = useState([]);
     const [selectedWarehouseId, setSelectedWarehouseId] = useState('ALL');
+    const [reportType, setReportType] = useState('item-wise'); // item-wise, warehouse-wise
+    const [hideZeroStock, setHideZeroStock] = useState(false);
+    const [expandedRows, setExpandedRows] = useState({});
 
     useEffect(() => {
         fetchCompanySettings();
@@ -52,7 +55,7 @@ const InventorySummary = () => {
 
     useEffect(() => {
         fetchInventorySummary();
-    }, [startDate, endDate]);
+    }, [startDate, endDate, selectedWarehouseId]);
 
     const fetchInventorySummary = async () => {
         setLoading(true);
@@ -60,7 +63,7 @@ const InventorySummary = () => {
             const companyId = GetCompanyId();
             if (companyId) {
                 const response = await axiosInstance.get(`/reports/inventory-summary`, {
-                    params: { companyId, startDate, endDate }
+                    params: { companyId, startDate, endDate, warehouseId: selectedWarehouseId }
                 });
                 if (response.data.success) {
                     setInventoryData(response.data.data);
@@ -78,19 +81,150 @@ const InventorySummary = () => {
         setShowViewModal(true);
     };
 
+    const preFilteredData = useMemo(() => {
+        if (selectedWarehouseId === 'ALL') return inventoryData;
+        return inventoryData.filter(item => Number(item.warehouseId) === Number(selectedWarehouseId));
+    }, [inventoryData, selectedWarehouseId]);
+
+    const stockFilteredData = useMemo(() => {
+        if (!hideZeroStock) return preFilteredData;
+        return preFilteredData.filter(item => item.closing !== 0);
+    }, [preFilteredData, hideZeroStock]);
+
+    const searchFilteredData = useMemo(() => {
+        return stockFilteredData.filter(item => {
+            const matchesSearch = item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (item.warehouse && item.warehouse.toLowerCase().includes(searchTerm.toLowerCase()));
+            const matchesFinished = showFinishedOnly ? item.closing <= 0 : true;
+            return matchesSearch && matchesFinished;
+        });
+    }, [stockFilteredData, searchTerm, showFinishedOnly]);
+
+    // Grouping
+    const groupedData = useMemo(() => {
+        if (reportType === 'item-wise') {
+            const grouped = {};
+            searchFilteredData.forEach(item => {
+                const key = item.productId;
+                if (!grouped[key]) {
+                    grouped[key] = {
+                        productId: item.productId,
+                        productName: item.productName,
+                        sku: item.sku,
+                        price: item.price,
+                        opening: 0,
+                        inward: 0,
+                        outward: 0,
+                        closing: 0,
+                        totalValue: 0,
+                        breakdown: []
+                    };
+                }
+                grouped[key].opening += item.opening || 0;
+                grouped[key].inward += item.inward || 0;
+                grouped[key].outward += item.outward || 0;
+                grouped[key].closing += item.closing || 0;
+                grouped[key].totalValue += item.totalValue || 0;
+                grouped[key].breakdown.push(item);
+            });
+
+            return Object.values(grouped).map(item => {
+                let status = 'In Stock';
+                if (item.closing <= 0) status = 'Out of Stock';
+                else if (item.closing < 10) status = 'Low Stock';
+                return { ...item, status };
+            });
+        } else {
+            const grouped = {};
+            searchFilteredData.forEach(item => {
+                const key = item.warehouse || 'Unknown Warehouse';
+                if (!grouped[key]) {
+                    grouped[key] = {
+                        warehouse: key,
+                        warehouseId: item.warehouseId,
+                        opening: 0,
+                        inward: 0,
+                        outward: 0,
+                        closing: 0,
+                        totalValue: 0,
+                        breakdown: []
+                    };
+                }
+                grouped[key].opening += item.opening || 0;
+                grouped[key].inward += item.inward || 0;
+                grouped[key].outward += item.outward || 0;
+                grouped[key].closing += item.closing || 0;
+                grouped[key].totalValue += item.totalValue || 0;
+                grouped[key].breakdown.push(item);
+            });
+
+            return Object.values(grouped).map(item => {
+                let status = 'In Stock';
+                if (item.closing <= 0) status = 'Out of Stock';
+                else if (item.closing < 10) status = 'Low Stock';
+                return { ...item, status };
+            });
+        }
+    }, [searchFilteredData, reportType]);
+
+    // Sorting the top-level groups
+    const sortedGroupedData = useMemo(() => {
+        return [...groupedData].sort((a, b) => {
+            let valA = reportType === 'item-wise' ? a[sortBy] : a.warehouse;
+            let valB = reportType === 'item-wise' ? b[sortBy] : b.warehouse;
+
+            if (sortBy === 'closing') {
+                valA = a.closing;
+                valB = b.closing;
+            }
+
+            if (typeof valA === 'string') {
+                valA = valA.toLowerCase();
+                valB = valB.toLowerCase();
+            }
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [groupedData, reportType, sortBy, sortOrder]);
+
+    const selectedItemBreakdown = useMemo(() => {
+        if (!selectedItem) return [];
+        return inventoryData.filter(item => item.productId === selectedItem.productId);
+    }, [selectedItem, inventoryData]);
+
     const exportToExcel = () => {
-        const worksheetData = filteredData.map(row => ({
-            'Product': row.productName,
-            'SKU': row.sku,
-            'Warehouse': row.warehouse,
-            'Opening': row.opening,
-            'Inward': row.inward,
-            'Outward': row.outward,
-            'Closing': row.closing,
-            'Price': row.price,
-            'Total Value': row.totalValue,
-            'Status': row.status
-        }));
+        const worksheetData = sortedGroupedData.flatMap(row => {
+            const mainRow = {
+                'Group Label': reportType === 'item-wise' ? row.productName : row.warehouse,
+                'SKU': reportType === 'item-wise' ? row.sku : '',
+                'Warehouse/Product Details': 'TOTAL/SUMMARY',
+                'Opening': row.opening,
+                'Inward': row.inward,
+                'Outward': row.outward,
+                'Closing': row.closing,
+                'Price': reportType === 'item-wise' ? row.price : '',
+                'Total Value': row.totalValue,
+                'Status': row.status
+            };
+
+            const subRows = row.breakdown.map(breakdown => ({
+                'Group Label': '',
+                'SKU': reportType === 'item-wise' ? '' : breakdown.sku,
+                'Warehouse/Product Details': reportType === 'item-wise' ? breakdown.warehouse : breakdown.productName,
+                'Opening': breakdown.opening,
+                'Inward': breakdown.inward,
+                'Outward': breakdown.outward,
+                'Closing': breakdown.closing,
+                'Price': breakdown.price,
+                'Total Value': breakdown.totalValue,
+                'Status': breakdown.status
+            }));
+
+            return [mainRow, ...subRows];
+        });
 
         const ws = XLSX.utils.json_to_sheet(worksheetData);
         const wb = XLSX.utils.book_new();
@@ -139,38 +273,72 @@ const InventorySummary = () => {
         doc.text('Inventory Summary Report', 14, 15);
         doc.setFontSize(10);
         doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 22);
+        doc.text(`Report Type: ${reportType === 'item-wise' ? 'Item-wise Warehouse Summary' : 'Warehouse-wise Item Summary'}`, 14, 28);
         if (startDate || endDate) {
-            doc.text(`Period: ${startDate || 'Start'} to ${endDate || 'End'}`, 14, 28);
+            doc.text(`Period: ${startDate || 'Start'} to ${endDate || 'End'}`, 14, 34);
         }
 
-        const tableColumn = ["Product", "SKU", "Warehouse", "Opening", "Inward", "Outward", "Closing", "Price", "Value", "Status"];
-        const tableRows = filteredData.map(row => {
-            const productText = row.productNameArabic
-                ? `${row.productName}\n${row.productNameArabic}`
-                : row.productName;
+        const tableColumn = reportType === 'item-wise'
+            ? ["Product/Warehouse", "SKU", "Opening", "Inward", "Outward", "Closing", "Price", "Value", "Status"]
+            : ["Warehouse/Product", "SKU", "Opening", "Inward", "Outward", "Closing", "Value", "Status"];
 
-            const warehouseText = row.warehouseArabic
-                ? `${row.warehouse}\n${row.warehouseArabic}`
-                : row.warehouse;
-
-            return [
-                makeCell(productText),
-                row.sku,
-                makeCell(warehouseText),
-                row.opening,
-                row.inward,
-                row.outward,
-                row.closing,
-                formatCurrency(row.price),
-                formatCurrency(row.totalValue),
-                row.status
-            ];
+        const tableRows = [];
+        sortedGroupedData.forEach(row => {
+            if (reportType === 'item-wise') {
+                tableRows.push([
+                    makeCell(row.productName),
+                    row.sku,
+                    row.opening,
+                    `+${row.inward}`,
+                    `-${row.outward}`,
+                    row.closing,
+                    formatCurrency(row.price),
+                    formatCurrency(row.totalValue),
+                    row.status
+                ]);
+                row.breakdown.forEach(breakdown => {
+                    tableRows.push([
+                        makeCell(`  ↳ ${breakdown.warehouse}`),
+                        '',
+                        breakdown.opening,
+                        `+${breakdown.inward}`,
+                        `-${breakdown.outward}`,
+                        breakdown.closing,
+                        formatCurrency(breakdown.price),
+                        formatCurrency(breakdown.totalValue),
+                        breakdown.status
+                    ]);
+                });
+            } else {
+                tableRows.push([
+                    makeCell(row.warehouse),
+                    '',
+                    row.opening,
+                    `+${row.inward}`,
+                    `-${row.outward}`,
+                    row.closing,
+                    formatCurrency(row.totalValue),
+                    row.status
+                ]);
+                row.breakdown.forEach(breakdown => {
+                    tableRows.push([
+                        makeCell(`  ↳ ${breakdown.productName}`),
+                        breakdown.sku,
+                        breakdown.opening,
+                        `+${breakdown.inward}`,
+                        `-${breakdown.outward}`,
+                        breakdown.closing,
+                        formatCurrency(breakdown.totalValue),
+                        breakdown.status
+                    ]);
+                });
+            }
         });
 
         autoTable(doc, {
             head: [tableColumn],
             body: tableRows,
-            startY: 35,
+            startY: 40,
             theme: 'grid',
             styles: { fontSize: 7 },
             headStyles: { fillColor: [44, 62, 80] },
@@ -192,81 +360,6 @@ const InventorySummary = () => {
             default: return 'status-neutral';
         }
     };
-
-    const processedData = useMemo(() => {
-        if (selectedWarehouseId === 'ALL') {
-            const grouped = {};
-            inventoryData.forEach(item => {
-                const key = item.productId;
-                if (!grouped[key]) {
-                    grouped[key] = {
-                        productId: item.productId,
-                        productName: item.productName,
-                        sku: item.sku,
-                        price: item.price,
-                        opening: 0,
-                        inward: 0,
-                        outward: 0,
-                        closing: 0,
-                        totalValue: 0,
-                        warehousesList: [],
-                        status: 'In Stock'
-                    };
-                }
-                grouped[key].opening += item.opening || 0;
-                grouped[key].inward += item.inward || 0;
-                grouped[key].outward += item.outward || 0;
-                grouped[key].closing += item.closing || 0;
-                grouped[key].totalValue += item.totalValue || 0;
-                if (item.warehouse && !grouped[key].warehousesList.includes(item.warehouse)) {
-                    grouped[key].warehousesList.push(item.warehouse);
-                }
-            });
-
-            return Object.values(grouped).map(item => {
-                let status = 'In Stock';
-                if (item.closing <= 0) status = 'Out of Stock';
-                else if (item.closing < 10) status = 'Low Stock';
-
-                return {
-                    ...item,
-                    warehouse: item.warehousesList.join(', ') || 'All Warehouses',
-                    status
-                };
-            });
-        } else {
-            const targetWarehouse = warehouses.find(w => w.id === parseInt(selectedWarehouseId));
-            return inventoryData.filter(item => {
-                return targetWarehouse ? item.warehouse === targetWarehouse.name : false;
-            });
-        }
-    }, [inventoryData, selectedWarehouseId, warehouses]);
-
-    const filteredData = processedData
-        .filter(item => {
-            const matchesSearch = item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                item.sku.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesFinished = showFinishedOnly ? item.closing <= 0 : true;
-            return matchesSearch && matchesFinished;
-        })
-        .sort((a, b) => {
-            let valA = a[sortBy];
-            let valB = b[sortBy];
-
-            if (typeof valA === 'string') {
-                valA = valA.toLowerCase();
-                valB = valB.toLowerCase();
-            }
-
-            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-            return 0;
-        });
-
-    const selectedItemBreakdown = useMemo(() => {
-        if (!selectedItem) return [];
-        return inventoryData.filter(item => item.productId === selectedItem.productId);
-    }, [selectedItem, inventoryData]);
 
     return (
         <div className="inventory-summary-page">
@@ -312,6 +405,44 @@ const InventorySummary = () => {
                 </div>
             </div>
 
+            {/* Toggle Report View Type */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: '#e2e8f0', padding: '4px', borderRadius: '8px', width: 'fit-content' }}>
+                <button 
+                    onClick={() => { setReportType('item-wise'); setExpandedRows({}); }} 
+                    style={{
+                        padding: '6px 16px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.85rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        background: reportType === 'item-wise' ? 'white' : 'transparent',
+                        color: reportType === 'item-wise' ? '#1e293b' : '#64748b',
+                        boxShadow: reportType === 'item-wise' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Item-wise Warehouse Summary
+                </button>
+                <button 
+                    onClick={() => { setReportType('warehouse-wise'); setExpandedRows({}); }} 
+                    style={{
+                        padding: '6px 16px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        fontSize: '0.85rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        background: reportType === 'warehouse-wise' ? 'white' : 'transparent',
+                        color: reportType === 'warehouse-wise' ? '#1e293b' : '#64748b',
+                        boxShadow: reportType === 'warehouse-wise' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Warehouse-wise Item Summary
+                </button>
+            </div>
+
             <div className="report-table-card">
                 {/* Controls */}
                 <div className="table-controls">
@@ -319,23 +450,35 @@ const InventorySummary = () => {
                         <Search size={18} className="search-icon" />
                         <input
                             type="text"
-                            placeholder="Search by Product or SKU..."
+                            placeholder="Search..."
                             className="search-input"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
                     <div className="report-secondary-filters">
-                        <div className="filter-group">
-                            <label><Filter size={14} /> Sort By:</label>
-                            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                                <option value="productName">Product Name</option>
-                                <option value="closing">Quantity (Closing)</option>
-                            </select>
-                            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
-                                <option value="asc">Ascending</option>
-                                <option value="desc">Descending</option>
-                            </select>
+                        {reportType === 'item-wise' && (
+                            <div className="filter-group">
+                                <label><Filter size={14} /> Sort By:</label>
+                                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                                    <option value="productName">Product Name</option>
+                                    <option value="closing">Quantity (Closing)</option>
+                                </select>
+                                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
+                                    <option value="asc">Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                            </div>
+                        )}
+                        <div className="filter-group checkbox-filter">
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={hideZeroStock}
+                                    onChange={(e) => setHideZeroStock(e.target.checked)}
+                                />
+                                <span>Hide Zero Stock Items</span>
+                            </label>
                         </div>
                         <div className="filter-group checkbox-filter">
                             <label>
@@ -354,55 +497,162 @@ const InventorySummary = () => {
                 <div className="table-container">
                     {loading ? (
                         <div className="p-8 text-center text-gray-500">Loading inventory data...</div>
-                    ) : filteredData.length === 0 ? (
+                    ) : sortedGroupedData.length === 0 ? (
                         <div className="p-8 text-center text-gray-500">No inventory records found.</div>
-                    ) : (
+                    ) : reportType === 'item-wise' ? (
                         <table className="report-table">
                             <thead>
                                 <tr>
+                                    <th style={{ width: '40px' }}></th>
                                     <th>#</th>
                                     <th>Product</th>
                                     <th>SKU</th>
-                                    <th>Warehouse</th>
                                     <th className="text-center">Opening</th>
                                     <th className="text-center">Inward</th>
                                     <th className="text-center">Outward</th>
                                     <th className="text-center">Closing</th>
-                                    <th className="text-right">Price (₹)</th>
-                                    <th className="text-right">Total Value (₹)</th>
+                                    <th className="text-right">Price</th>
+                                    <th className="text-right">Total Value</th>
                                     <th>Status</th>
                                     <th className="text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredData.map((row, index) => (
-                                    <tr key={index}>
-                                        <td>{index + 1}</td>
-                                        <td className="font-medium">{row.productName}</td>
-                                        <td className="font-mono text-sm">{row.sku}</td>
-                                        <td>{row.warehouse}</td>
-                                        <td className="text-center text-gray-500">{row.opening}</td>
-                                        <td className="text-center text-green-600">+{row.inward}</td>
-                                        <td className="text-center text-red-500">-{row.outward}</td>
-                                        <td className="text-center font-bold">{row.closing}</td>
-                                        <td className="text-right">{formatCurrency(row.price)}</td>
-                                        <td className="text-right font-bold">{formatCurrency(row.totalValue)}</td>
-                                        <td>
-                                            <span className={`status-pill ${getStatusClass(row.status)}`}>
-                                                {row.status}
-                                            </span>
-                                        </td>
-                                        <td className="text-right">
-                                            <button
-                                                className="btn-icon-view"
-                                                title="View Details"
-                                                onClick={() => handleView(row)}
-                                            >
-                                                <Eye size={16} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {sortedGroupedData.map((row, index) => {
+                                    const isExpanded = !!expandedRows[row.productId];
+                                    return (
+                                        <React.Fragment key={row.productId}>
+                                            <tr style={{ background: isExpanded ? '#f8fafc' : 'transparent', borderLeft: isExpanded ? '4px solid #3b82f6' : 'none' }}>
+                                                <td className="text-center">
+                                                    <button 
+                                                        onClick={() => setExpandedRows(prev => ({ ...prev, [row.productId]: !prev[row.productId] }))}
+                                                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                                    >
+                                                        {isExpanded ? '▼' : '▶'}
+                                                    </button>
+                                                </td>
+                                                <td>{index + 1}</td>
+                                                <td className="font-medium">{row.productName}</td>
+                                                <td className="font-mono text-sm">{row.sku}</td>
+                                                <td className="text-center text-gray-500">{row.opening}</td>
+                                                <td className="text-center text-green-600">+{row.inward}</td>
+                                                <td className="text-center text-red-500">-{row.outward}</td>
+                                                <td className="text-center font-bold" style={{ color: row.closing < 0 ? '#ef4444' : '#1e293b' }}>
+                                                    {row.closing}
+                                                </td>
+                                                <td className="text-right">{formatCurrency(row.price)}</td>
+                                                <td className="text-right font-bold">{formatCurrency(row.totalValue)}</td>
+                                                <td>
+                                                    <span className={`status-pill ${getStatusClass(row.status)}`}>
+                                                        {row.status}
+                                                    </span>
+                                                </td>
+                                                <td className="text-right">
+                                                    <button
+                                                        className="btn-icon-view"
+                                                        title="View Details"
+                                                        onClick={() => handleView(row)}
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && row.breakdown.map((breakdown, bIdx) => (
+                                                <tr key={`breakdown-${bIdx}`} style={{ background: '#f8fafc' }}>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td colSpan={2} style={{ paddingLeft: '2rem', fontSize: '0.85rem', color: '#64748b' }}>
+                                                        ↳ <span className="font-medium text-gray-600">{breakdown.warehouse}</span>
+                                                    </td>
+                                                    <td className="text-center text-gray-400 text-sm">{breakdown.opening}</td>
+                                                    <td className="text-center text-green-500 text-sm">+{breakdown.inward}</td>
+                                                    <td className="text-center text-red-400 text-sm">-{breakdown.outward}</td>
+                                                    <td className="text-center font-bold text-sm" style={{ color: breakdown.closing < 0 ? '#ef4444' : '#64748b' }}>
+                                                        {breakdown.closing}
+                                                    </td>
+                                                    <td className="text-right text-gray-400 text-sm">{formatCurrency(breakdown.price)}</td>
+                                                    <td className="text-right font-bold text-gray-500 text-sm">{formatCurrency(breakdown.totalValue)}</td>
+                                                    <td>
+                                                        <span className={`status-pill ${getStatusClass(breakdown.status)}`} style={{ fontSize: '0.65rem', padding: '1px 6px' }}>
+                                                            {breakdown.status}
+                                                        </span>
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <table className="report-table">
+                            <thead>
+                                <tr>
+                                    <th style={{ width: '40px' }}></th>
+                                    <th>#</th>
+                                    <th>Warehouse</th>
+                                    <th className="text-center">Opening</th>
+                                    <th className="text-center">Inward</th>
+                                    <th className="text-center">Outward</th>
+                                    <th className="text-center">Closing</th>
+                                    <th className="text-right">Total Value</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedGroupedData.map((row, index) => {
+                                    const isExpanded = !!expandedRows[row.warehouse];
+                                    return (
+                                        <React.Fragment key={row.warehouse}>
+                                            <tr style={{ background: isExpanded ? '#f8fafc' : 'transparent', borderLeft: isExpanded ? '4px solid #3b82f6' : 'none' }}>
+                                                <td className="text-center">
+                                                    <button 
+                                                        onClick={() => setExpandedRows(prev => ({ ...prev, [row.warehouse]: !prev[row.warehouse] }))}
+                                                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                                    >
+                                                        {isExpanded ? '▼' : '▶'}
+                                                    </button>
+                                                </td>
+                                                <td>{index + 1}</td>
+                                                <td className="font-medium">{row.warehouse}</td>
+                                                <td className="text-center text-gray-500">{row.opening}</td>
+                                                <td className="text-center text-green-600">+{row.inward}</td>
+                                                <td className="text-center text-red-500">-{row.outward}</td>
+                                                <td className="text-center font-bold" style={{ color: row.closing < 0 ? '#ef4444' : '#1e293b' }}>
+                                                    {row.closing}
+                                                </td>
+                                                <td className="text-right font-bold">{formatCurrency(row.totalValue)}</td>
+                                                <td>
+                                                    <span className={`status-pill ${getStatusClass(row.status)}`}>
+                                                        {row.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && row.breakdown.map((breakdown, bIdx) => (
+                                                <tr key={`breakdown-${bIdx}`} style={{ background: '#f8fafc' }}>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td style={{ paddingLeft: '2rem', fontSize: '0.85rem', color: '#64748b' }}>
+                                                        ↳ <span className="font-medium text-gray-700">{breakdown.productName}</span> <span style={{ fontSize: '0.75rem', background: '#e2e8f0', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', marginLeft: '6px' }}>{breakdown.sku}</span>
+                                                    </td>
+                                                    <td className="text-center text-gray-400 text-sm">{breakdown.opening}</td>
+                                                    <td className="text-center text-green-500 text-sm">+{breakdown.inward}</td>
+                                                    <td className="text-center text-red-400 text-sm">-{breakdown.outward}</td>
+                                                    <td className="text-center font-bold text-sm" style={{ color: breakdown.closing < 0 ? '#ef4444' : '#64748b' }}>
+                                                        {breakdown.closing}
+                                                    </td>
+                                                    <td className="text-right font-bold text-gray-500 text-sm">{formatCurrency(breakdown.totalValue)}</td>
+                                                    <td>
+                                                        <span className={`status-pill ${getStatusClass(breakdown.status)}`} style={{ fontSize: '0.65rem', padding: '1px 6px' }}>
+                                                            {breakdown.status}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     )}

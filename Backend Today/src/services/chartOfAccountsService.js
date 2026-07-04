@@ -181,13 +181,13 @@ const calculateDynamicLedgerBalances = async (companyId, inventoryValue) => {
 
             let dynamicBalance;
             if (isInventory) {
-                dynamicBalance = inventoryValue;
+                dynamicBalance = inventoryValue * rate;
             } else if (isOBE || isRetainedEarnings) {
                 dynamicBalance = 0; // Will be set after totals
             } else if (['ASSETS', 'EXPENSES'].includes(groupType)) {
-                dynamicBalance = opening + txnDebit - txnCredit;
+                dynamicBalance = txnDebit - txnCredit;
             } else {
-                dynamicBalance = opening + txnCredit - txnDebit;
+                dynamicBalance = txnCredit - txnDebit;
             }
 
             balanceMap.set(l.id, {
@@ -200,7 +200,7 @@ const calculateDynamicLedgerBalances = async (companyId, inventoryValue) => {
             });
 
             if (!isOBE && !isRetainedEarnings) {
-                if (groupType === 'ASSETS') totalAssets += isInventory ? inventoryValue : dynamicBalance;
+                if (groupType === 'ASSETS') totalAssets += dynamicBalance;
                 else if (groupType === 'LIABILITIES') totalLiabilities += dynamicBalance;
                 else if (groupType === 'EQUITY') totalOtherEquity += dynamicBalance;
                 else if (groupType === 'INCOME') totalIncome += dynamicBalance;
@@ -211,10 +211,9 @@ const calculateDynamicLedgerBalances = async (companyId, inventoryValue) => {
         // Calculate dynamic profit/loss and set Retained Earnings
         const netProfit = totalIncome - totalExpenses;
         const reLedger = ledgers.find(l => l.name.toLowerCase().includes('retained earnings'));
-        const reOpening = reLedger?.openingBalance || 0;
         const reTxnDebit = reLedger ? (debitMap.get(reLedger.id) || 0) : 0;
         const reTxnCredit = reLedger ? (creditMap.get(reLedger.id) || 0) : 0;
-        const dynamicRetainedEarnings = reOpening + reTxnCredit - reTxnDebit + netProfit;
+        const dynamicRetainedEarnings = reTxnCredit - reTxnDebit + netProfit;
 
         // Add dynamic Retained Earnings to totalOtherEquity for correct OBE calculation
         totalOtherEquity += dynamicRetainedEarnings;
@@ -454,9 +453,16 @@ const getChartOfAccounts = async (companyId, filters = {}) => {
         const inventoryValue = await calculateInventoryValue(companyId);
         const balanceMap = await calculateDynamicLedgerBalances(companyId, inventoryValue);
 
+        const companyCurrency = await getCompanyCurrency(companyId);
+        const histCurr = await getCompanyHistoricalCurrency(companyId);
+        const rate = await getConversionRate(histCurr, companyCurrency);
+
         const applyDynamic = (l) => {
             const entry = balanceMap.get(l.id);
-            if (entry) l.currentBalance = entry.dynamicBalance;
+            if (entry) {
+                l.currentBalance = entry.dynamicBalance;
+                l.openingBalance = (l.openingBalance || 0) * rate;
+            }
         };
 
         groups.forEach(group => {
@@ -674,7 +680,13 @@ const getLedgerById = async (id, companyId) => {
             const inventoryValue = await calculateInventoryValue(companyId);
             const balanceMap = await calculateDynamicLedgerBalances(companyId, inventoryValue);
             const entry = balanceMap.get(ledger.id);
-            if (entry) ledger.currentBalance = entry.dynamicBalance;
+            if (entry) {
+                ledger.currentBalance = entry.dynamicBalance;
+                const companyCurrency = await getCompanyCurrency(companyId);
+                const histCurr = await getCompanyHistoricalCurrency(companyId);
+                const rate = await getConversionRate(histCurr, companyCurrency);
+                ledger.openingBalance = (ledger.openingBalance || 0) * rate;
+            }
         }
 
         return ledger;
@@ -774,9 +786,14 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
             orderBy: { date: 'desc' }
         });
 
-        // Normalize relation fields to support frontend camelCase access
+        const companyCurrency = await getCompanyCurrency(companyId);
+        const histCurr = await getCompanyHistoricalCurrency(companyId);
+        const rate = await getConversionRate(histCurr, companyCurrency);
+
+        // Normalize relation fields and scale amount to active base currency
         const normalized = transactions.map(t => ({
             ...t,
+            amount: (t.amount || 0) * rate,
             invoice: t.invoice ?? null,
             purchaseBill: t.purchasebill ?? t.purchaseBill ?? null,
             receipt: t.receipt ?? null,
@@ -803,8 +820,8 @@ const getLedgerTransactions = async (ledgerId, companyId) => {
 
             const isDebitNormal = ['ASSETS', 'EXPENSES'].includes(entry.groupType);
             const actualBalance = isDebitNormal
-                ? (opening + actualTxnDebit - actualTxnCredit)
-                : (opening + actualTxnCredit - actualTxnDebit);
+                ? (actualTxnDebit - actualTxnCredit)
+                : (actualTxnCredit - actualTxnDebit);
 
             const diff = entry.dynamicBalance - actualBalance;
 

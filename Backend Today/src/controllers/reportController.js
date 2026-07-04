@@ -715,27 +715,32 @@ const getInventorySummary = async (req, res) => {
         const companyId = req.user?.companyId || req.query.companyId;
         if (!companyId) return res.status(400).json({ success: false, message: 'Company ID is required' });
 
+        const { startDate, endDate, warehouseId } = req.query;
+
         // Get All Stocks
+        const stockWhere = { product: { companyId: parseInt(companyId) } };
+        if (warehouseId && warehouseId !== 'ALL') {
+            stockWhere.warehouseId = parseInt(warehouseId);
+        }
+
         const stocks = await prisma.stock.findMany({
-            where: { product: { companyId: parseInt(companyId) } },
+            where: stockWhere,
             include: {
                 product: { include: { category: true } },
                 warehouse: true
             }
         });
 
-        // Calculate movements based on transactions? 
-        // Or simplified: Stock table holds current (closing).
-        // Opening = Closing - Inward + Outward (Logic depends on date range, but "summary" usually means current status).
-        // If user wants historical range, we need InventoryTransaction table. 
-        // Assuming "Current Status" report for now as per UI "Track stock movements and CURRENT status".
-        // But the UI shows "Opening, Inward, Outward". This implies a period (e.g. today, this month).
-        // Let's assume period is "All Time" or "Current Accounting Period".
-        // Better: Use InventoryTransaction to sum Inwards/Outwards.
-
-        // Let's fetch transaction aggregates per product/warehouse
+        // Get All Transactions
+        const txWhere = { companyId: parseInt(companyId) };
+        if (warehouseId && warehouseId !== 'ALL') {
+            txWhere.OR = [
+                { fromWarehouseId: parseInt(warehouseId) },
+                { toWarehouseId: parseInt(warehouseId) }
+            ];
+        }
         const transactions = await prisma.inventorytransaction.findMany({
-            where: { companyId: parseInt(companyId) }
+            where: txWhere
         });
 
         const companyCurrency = await getCompanyCurrency(companyId);
@@ -753,9 +758,10 @@ const getInventorySummary = async (req, res) => {
                 productId: stk.productId,
                 productName: stk.product.name,
                 sku: stk.product.sku || 'N/A',
+                warehouseId: stk.warehouseId,
                 warehouse: stk.warehouse.name,
                 price: (stk.product.salePrice || 0) * rate,
-                closing: stk.quantity, // Current quantity found in stock table is Closing for "today"
+                closing: stk.quantity, // starts as current stock, will adjust if date filter is set
                 opening: 0,
                 inward: 0,
                 outward: 0,
@@ -763,38 +769,53 @@ const getInventorySummary = async (req, res) => {
             };
         });
 
-        // If specific date range provided, we'd need complex "As Of" calculation.
-        // For now, let's treat "Inward" as Purchases/Returns In, "Outward" as Sales/Returns Out.
-        // And "Opening" as what?
-        // Let's calculate Inward/Outward from transactions. 
-        // Issue: Closing is known. Opening = Closing - In + Out.
+        // Parse date filters
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
 
+        // If dates are provided, we need to adjust the closing/opening stock based on transaction dates.
         transactions.forEach(txn => {
-            // Logic:
-            // Type: PURCHASE, RETURN (In from Cust), GRN, ADJUSTMENT(Add), OPENING_STOCK, TRANSFER(In) -> Inward
-            // Type: SALE, RETURN (Out to Vendor), ADJUSTMENT(Remove), TRANSFER(Out) -> Outward
-
-            // We need to match with the stock keys.
-            // Trans has fromWarehouseId and toWarehouseId.
+            const txnDate = new Date(txn.date);
 
             // Handle OUT from warehouse
             if (txn.fromWarehouseId) {
-                const key = `${txn.productId}-${txn.fromWarehouseId}`;
-                if (reportMap[key]) {
-                    reportMap[key].outward += txn.quantity;
+                // If filtering by a specific warehouse, skip if it doesn't match
+                if (warehouseId && warehouseId !== 'ALL' && txn.fromWarehouseId !== parseInt(warehouseId)) {
+                    // skip
+                } else {
+                    const key = `${txn.productId}-${txn.fromWarehouseId}`;
+                    if (reportMap[key]) {
+                        if (end && txnDate > end) {
+                            // transaction happened after endDate, so the stock back then was higher
+                            reportMap[key].closing += txn.quantity;
+                        } else if (start && txnDate >= start && (!end || txnDate <= end)) {
+                            reportMap[key].outward += txn.quantity;
+                        } else if (!start && (!end || txnDate <= end)) {
+                            reportMap[key].outward += txn.quantity;
+                        }
+                    }
                 }
             }
 
             // Handle IN to warehouse
             if (txn.toWarehouseId) {
-                const key = `${txn.productId}-${txn.toWarehouseId}`;
-                if (reportMap[key]) {
-                    reportMap[key].inward += txn.quantity;
+                // If filtering by a specific warehouse, skip if it doesn't match
+                if (warehouseId && warehouseId !== 'ALL' && txn.toWarehouseId !== parseInt(warehouseId)) {
+                    // skip
+                } else {
+                    const key = `${txn.productId}-${txn.toWarehouseId}`;
+                    if (reportMap[key]) {
+                        if (end && txnDate > end) {
+                            // transaction happened after endDate, so the stock back then was lower
+                            reportMap[key].closing -= txn.quantity;
+                        } else if (start && txnDate >= start && (!end || txnDate <= end)) {
+                            reportMap[key].inward += txn.quantity;
+                        } else if (!start && (!end || txnDate <= end)) {
+                            reportMap[key].inward += txn.quantity;
+                        }
+                    }
                 }
             }
-            // Note: Single trans can be transfer (out from A, in to B).
-            // Purchase is IN to 'toWarehouse'.
-            // Sale is OUT from 'fromWarehouse'.
         });
 
         // Now Calculate Opening: Opening = Closing - Inward + Outward
@@ -894,9 +915,9 @@ const getBalanceSheet = async (req, res) => {
                 // Always override Inventory Asset with live stock value
                 balance = currentInventoryValue;
             } else if (['ASSETS', 'EXPENSES'].includes(groupType)) {
-                balance = opening + (getDebit(ledger.id) - getCredit(ledger.id)) * rate;
+                balance = (getDebit(ledger.id) - getCredit(ledger.id)) * rate;
             } else {
-                balance = opening + (getCredit(ledger.id) - getDebit(ledger.id)) * rate;
+                balance = (getCredit(ledger.id) - getDebit(ledger.id)) * rate;
             }
 
             // Only process non-zero balances (Equity accounts should always show in Balance Sheet)
@@ -1751,11 +1772,11 @@ const getTrialBalance = async (req, res) => {
 
                 // Assets and Expenses: Debit-normal
                 if (groupType === 'ASSETS' || groupType === 'EXPENSES') {
-                    totalDebit = openingBalance + txnDebit;
+                    totalDebit = txnDebit;
                     totalCredit = txnCredit;
                 } else {
                     // Liabilities, Income, Equity: Credit-normal
-                    totalCredit = openingBalance + txnCredit;
+                    totalCredit = txnCredit;
                     totalDebit = txnDebit;
                 }
             }

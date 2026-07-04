@@ -197,6 +197,7 @@ exports.Prisma.CompanyScalarFieldEnum = {
   zip: 'zip',
   country: 'country',
   currency: 'currency',
+  originalCurrency: 'originalCurrency',
   bankName: 'bankName',
   accountHolder: 'accountHolder',
   accountNumber: 'accountNumber',
