@@ -1509,7 +1509,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\Users\\nisha\\OneDrive\\Pictures\\KiyaanProject\\zirakbook\\Backend Today\\prisma\\generated\\client",
+      "value": "C:\\Users\\HGP\\Desktop\\1231222\\JirakBook\\Backend Today\\prisma\\generated\\client",
       "fromEnvVar": null
     },
     "config": {
@@ -1527,7 +1527,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\Users\\nisha\\OneDrive\\Pictures\\KiyaanProject\\zirakbook\\Backend Today\\prisma\\schema.prisma",
+    "sourceFilePath": "C:\\Users\\HGP\\Desktop\\1231222\\JirakBook\\Backend Today\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

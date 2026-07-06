@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const https = require('https');
 
 let cachedRates = null;
 let lastFetched = 0;
@@ -172,24 +173,52 @@ const FALLBACK_RATES = {
     "ZWL": 26.8699
 };
 
-const getExchangeRates = async () => {
-    const now = Date.now();
-    // Cache rates for 1 hour to avoid API throttling
-    if (cachedRates && (now - lastFetched < 3600000)) {
-        return cachedRates;
-    }
-    try {
-        const res = await fetch('https://open.er-api.com/v6/latest/USD');
-        const data = await res.json();
-        if (data && data.rates) {
-            cachedRates = data.rates;
-            lastFetched = now;
-            return cachedRates;
+const getExchangeRates = () => {
+    return new Promise((resolve) => {
+        const now = Date.now();
+        if (cachedRates && (now - lastFetched < 3600000)) {
+            return resolve(cachedRates);
         }
-    } catch (e) {
-        console.error('Error fetching exchange rates:', e.message);
-    }
-    return FALLBACK_RATES;
+        
+        // Try first API
+        https.get('https://open.er-api.com/v6/latest/USD', (res) => {
+            let body = '';
+            res.on('data', (chunk) => { body += chunk; });
+            res.on('end', () => {
+                try {
+                    const data = JSON.parse(body);
+                    if (data && data.rates) {
+                        cachedRates = data.rates;
+                        lastFetched = now;
+                        return resolve(cachedRates);
+                    }
+                } catch (e) {}
+                tryAlternative();
+            });
+        }).on('error', () => {
+            tryAlternative();
+        });
+
+        function tryAlternative() {
+            https.get('https://api.exchangerate-api.com/v4/latest/USD', (res) => {
+                let body = '';
+                res.on('data', (chunk) => { body += chunk; });
+                res.on('end', () => {
+                    try {
+                        const data = JSON.parse(body);
+                        if (data && data.rates) {
+                            cachedRates = data.rates;
+                            lastFetched = now;
+                            return resolve(cachedRates);
+                        }
+                    } catch (e) {}
+                    resolve(FALLBACK_RATES);
+                });
+            }).on('error', () => {
+                resolve(FALLBACK_RATES);
+            });
+        }
+    });
 };
 
 /**

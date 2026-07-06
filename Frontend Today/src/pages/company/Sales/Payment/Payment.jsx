@@ -22,9 +22,39 @@ import posService from '../../../../services/posService';
 const Payment = () => {
 
     const { hasPermission } = useContext(AuthContext);
-    const { companySettings, formatCurrency, getReceiptPaymentLabel, getReceiptPaymentHeader, getDocumentTitle } = useContext(CompanyContext);
+    const { companySettings, formatCurrency, getReceiptPaymentLabel, getReceiptPaymentHeader, getDocumentTitle, getSyncRate } = useContext(CompanyContext);
     const [receipts, setReceipts] = useState([]);
     const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const formatDocCurrency = (amount, currencyCode) => {
+        const docCurrency = currencyCode || companySettings?.currency || 'INR';
+        const localeMap = {
+            'INR': 'en-IN',
+            'AED': 'ar-AE',
+            'SAR': 'ar-SA',
+            'EUR': 'de-DE',
+            'GBP': 'en-GB',
+            'JPY': 'ja-JP',
+            'CNY': 'zh-CN',
+            'RUB': 'ru-RU',
+            'BRL': 'pt-BR',
+            'CAD': 'en-CA',
+            'AUD': 'en-AU',
+            'PKR': 'en-PK',
+            'BDT': 'en-BD'
+        };
+        const locale = localeMap[docCurrency] || 'en-US';
+        try {
+            return new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency: docCurrency,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount || 0);
+        } catch (e) {
+            return `${docCurrency} ${(amount || 0).toFixed(2)}`;
+        }
+    };
 
     const getCustomFieldsForType = (type) => {
         if (!companySettings?.customFieldsConfig) return [];
@@ -780,7 +810,21 @@ const Payment = () => {
                                     <td>{new Date(rec.date).toLocaleDateString()}</td>
                                     <td>{rec.cashBankAccount?.name || '-'}</td>
                                     {/* <td>{rec.paymentMode}</td> */}
-                                    <td className="font-bold SalesPayment-text-green-600">{formatCurrency(rec.amount)}</td>
+                                    <td className="font-bold SalesPayment-text-green-600">
+                                        {(() => {
+                                            const recCurr = rec.allocations?.[0]?.invoice?.currency || rec.invoice?.currency || companySettings?.currency || 'INR';
+                                            const recRate = getSyncRate(recCurr, companySettings?.currency || 'INR') || 1.0;
+                                            const isForeignRec = recCurr !== (companySettings?.currency || 'INR');
+                                            return isForeignRec ? (
+                                                <>
+                                                    <div style={{ fontWeight: '600' }}>{formatDocCurrency(rec.amount, recCurr)}</div>
+                                                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency(rec.amount * recRate)})</div>
+                                                </>
+                                            ) : (
+                                                formatCurrency(rec.amount)
+                                            );
+                                        })()}
+                                    </td>
                                     <td>
                                         <select
                                             value={rec.manualStatus ? rec.status : 'AUTO'}
@@ -898,27 +942,67 @@ const Payment = () => {
                                             {currentPayment?.referenceNumber && (
                                                 <p className="SalesPayment-invoice-meta-details"><span className="SalesPayment-invoice-meta-label">{getReceiptPaymentLabel('refNo', 'Ref No:')}</span> {currentPayment.referenceNumber}</p>
                                             )}
-                                            {currentPayment?.discountAmount > 0 && (
-                                                <>
-                                                    <p className="SalesPayment-invoice-meta-details"><span className="SalesPayment-invoice-meta-label">{getReceiptPaymentLabel('discount', 'Discount Allowed:')}</span> {formatCurrency(currentPayment.discountAmount)}</p>
-                                                    <p className="SalesPayment-invoice-meta-details"><span className="SalesPayment-invoice-meta-label">{getReceiptPaymentLabel('discountAccount', 'Discount Account:')}</span> {currentPayment.discountLedger?.name || 'N/A'}</p>
-                                                </>
-                                            )}
+                                            {currentPayment?.discountAmount > 0 && (() => {
+                                                const recCurr = currentPayment?.allocations?.[0]?.invoice?.currency || currentPayment?.invoice?.currency || companySettings?.currency || 'INR';
+                                                const recRate = getSyncRate(recCurr, companySettings?.currency || 'INR') || 1.0;
+                                                const isForeignRec = recCurr !== (companySettings?.currency || 'INR');
+                                                return (
+                                                    <>
+                                                        <p className="SalesPayment-invoice-meta-details">
+                                                            <span className="SalesPayment-invoice-meta-label">{getReceiptPaymentLabel('discount', 'Discount Allowed:')}</span>{' '}
+                                                            {isForeignRec ? (
+                                                                <>
+                                                                    {formatDocCurrency(currentPayment.discountAmount, recCurr)}
+                                                                    <span style={{ fontSize: '0.85rem', color: '#64748b', marginLeft: '6px' }}>({formatCurrency(currentPayment.discountAmount * recRate)})</span>
+                                                                </>
+                                                            ) : (
+                                                                formatCurrency(currentPayment.discountAmount)
+                                                            )}
+                                                        </p>
+                                                        <p className="SalesPayment-invoice-meta-details"><span className="SalesPayment-invoice-meta-label">{getReceiptPaymentLabel('discountAccount', 'Discount Account:')}</span> {currentPayment.discountLedger?.name || 'N/A'}</p>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 
                                     {/* Amount Box */}
-                                    <div className="SalesPayment-receipt-amount-box">
-                                        <div className="SalesPayment-receipt-amount-text">
-                                            {getReceiptPaymentLabel('satisfaction', 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.')
-                                                .replace('{amount}', formatCurrency(currentPayment?.amount || 0))
-                                                .replace('{discountText}', currentPayment?.discountAmount > 0 ? `(with ${formatCurrency(currentPayment.discountAmount)} discount)` : '')
-                                            }
-                                        </div>
-                                        <div className="SalesPayment-receipt-amount-value">
-                                            {formatCurrency(currentPayment?.amount || 0)}
-                                        </div>
-                                    </div>
+                                    {(() => {
+                                        const recCurr = currentPayment?.allocations?.[0]?.invoice?.currency || currentPayment?.invoice?.currency || companySettings?.currency || 'INR';
+                                        const recRate = getSyncRate(recCurr, companySettings?.currency || 'INR') || 1.0;
+                                        const isForeignRec = recCurr !== (companySettings?.currency || 'INR');
+                                        
+                                        const amountText = isForeignRec 
+                                            ? `${formatDocCurrency(currentPayment?.amount || 0, recCurr)} (${formatCurrency((currentPayment?.amount || 0) * recRate)})`
+                                            : formatCurrency(currentPayment?.amount || 0);
+
+                                        const discountText = currentPayment?.discountAmount > 0
+                                            ? (isForeignRec 
+                                                ? ` (with ${formatDocCurrency(currentPayment.discountAmount, recCurr)} (${formatCurrency(currentPayment.discountAmount * recRate)}) discount)`
+                                                : ` (with ${formatCurrency(currentPayment.discountAmount)} discount)`)
+                                            : '';
+
+                                        return (
+                                            <div className="SalesPayment-receipt-amount-box">
+                                                <div className="SalesPayment-receipt-amount-text">
+                                                    {getReceiptPaymentLabel('satisfaction', 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.')
+                                                        .replace('{amount}', amountText)
+                                                        .replace('{discountText}', discountText)
+                                                    }
+                                                </div>
+                                                <div className="SalesPayment-receipt-amount-value">
+                                                    {isForeignRec ? (
+                                                        <>
+                                                            <div style={{ fontSize: '1.25rem', fontWeight: 'normal', color: '#64748b' }}>{formatDocCurrency(currentPayment?.amount || 0, recCurr)}</div>
+                                                            <div>{formatCurrency((currentPayment?.amount || 0) * recRate)}</div>
+                                                        </>
+                                                    ) : (
+                                                        formatCurrency(currentPayment?.amount || 0)
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Custom Fields Print View */}
                                     {(() => {
@@ -963,24 +1047,92 @@ const Payment = () => {
                                                 </thead>
                                                 <tbody>
                                                     {currentPayment.allocations && currentPayment.allocations.length > 0 ? (
-                                                        currentPayment.allocations.map((alloc, index) => (
-                                                            <tr key={alloc.id}>
-                                                                <td>{alloc.invoice?.invoiceNumber || `ID: ${alloc.invoiceId}`}</td>
-                                                                <td>{alloc.invoice?.date ? new Date(alloc.invoice.date).toLocaleDateString() : 'N/A'}</td>
-                                                                <td className="text-right">{formatCurrency(alloc.invoice?.totalAmount || 0)}</td>
-                                                                <td className="text-right">{formatCurrency(parseFloat(alloc.amount || 0) + (index === 0 ? parseFloat(currentPayment.discountAmount || 0) : 0))}</td>
-                                                                <td className="text-right font-bold text-red-500">{formatCurrency(alloc.invoice?.balanceAmount || 0)}</td>
-                                                            </tr>
-                                                        ))
+                                                        currentPayment.allocations.map((alloc, index) => {
+                                                            const invCurr = alloc.invoice?.currency || companySettings?.currency || 'INR';
+                                                            const invRate = getSyncRate(invCurr, companySettings?.currency || 'INR') || 1.0;
+                                                            const isInvForeign = invCurr !== (companySettings?.currency || 'INR');
+                                                            const allocSum = parseFloat(alloc.amount || 0) + (index === 0 ? parseFloat(currentPayment.discountAmount || 0) : 0);
+                                                            return (
+                                                                <tr key={alloc.id}>
+                                                                    <td>{alloc.invoice?.invoiceNumber || `ID: ${alloc.invoiceId}`}</td>
+                                                                    <td>{alloc.invoice?.date ? new Date(alloc.invoice.date).toLocaleDateString() : 'N/A'}</td>
+                                                                    <td className="text-right">
+                                                                        {isInvForeign ? (
+                                                                            <>
+                                                                                <div style={{ fontWeight: '600' }}>{formatDocCurrency(alloc.invoice?.totalAmount || 0, invCurr)}</div>
+                                                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency((alloc.invoice?.totalAmount || 0) * invRate)})</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            formatCurrency(alloc.invoice?.totalAmount || 0)
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="text-right">
+                                                                        {isInvForeign ? (
+                                                                            <>
+                                                                                <div style={{ fontWeight: '600' }}>{formatDocCurrency(allocSum, invCurr)}</div>
+                                                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(allocSum * invRate)})</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            formatCurrency(allocSum)
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="text-right font-bold text-red-500">
+                                                                        {isInvForeign ? (
+                                                                            <>
+                                                                                <div>{formatDocCurrency(alloc.invoice?.balanceAmount || 0, invCurr)}</div>
+                                                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((alloc.invoice?.balanceAmount || 0) * invRate)})</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            formatCurrency(alloc.invoice?.balanceAmount || 0)
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
                                                     ) : (
                                                         // Fallback to legacy single invoice link
-                                                        <tr>
-                                                            <td>{currentPayment.invoice.invoiceNumber}</td>
-                                                            <td>{new Date(currentPayment.invoice.date).toLocaleDateString()}</td>
-                                                            <td className="text-right">{formatCurrency(currentPayment.invoice.totalAmount)}</td>
-                                                            <td className="text-right">{formatCurrency(parseFloat(currentPayment.amount || 0) + parseFloat(currentPayment.discountAmount || 0))}</td>
-                                                            <td className="text-right font-bold text-red-500">{formatCurrency(currentPayment.invoice.balanceAmount)}</td>
-                                                        </tr>
+                                                        (() => {
+                                                            const invCurr = currentPayment?.invoice?.currency || companySettings?.currency || 'INR';
+                                                            const invRate = getSyncRate(invCurr, companySettings?.currency || 'INR') || 1.0;
+                                                            const isInvForeign = invCurr !== (companySettings?.currency || 'INR');
+                                                            const allocSum = parseFloat(currentPayment?.amount || 0) + parseFloat(currentPayment?.discountAmount || 0);
+                                                            return (
+                                                                <tr>
+                                                                    <td>{currentPayment?.invoice?.invoiceNumber}</td>
+                                                                    <td>{currentPayment?.invoice?.date ? new Date(currentPayment.invoice.date).toLocaleDateString() : 'N/A'}</td>
+                                                                    <td className="text-right">
+                                                                        {isInvForeign ? (
+                                                                            <>
+                                                                                <div style={{ fontWeight: '600' }}>{formatDocCurrency(currentPayment?.invoice?.totalAmount || 0, invCurr)}</div>
+                                                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency((currentPayment?.invoice?.totalAmount || 0) * invRate)})</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            formatCurrency(currentPayment?.invoice?.totalAmount || 0)
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="text-right">
+                                                                        {isInvForeign ? (
+                                                                            <>
+                                                                                <div style={{ fontWeight: '600' }}>{formatDocCurrency(allocSum, invCurr)}</div>
+                                                                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(allocSum * invRate)})</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            formatCurrency(allocSum)
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="text-right font-bold text-red-500">
+                                                                        {isInvForeign ? (
+                                                                            <>
+                                                                                <div>{formatDocCurrency(currentPayment?.invoice?.balanceAmount || 0, invCurr)}</div>
+                                                                                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((currentPayment?.invoice?.balanceAmount || 0) * invRate)})</div>
+                                                                            </>
+                                                                        ) : (
+                                                                            formatCurrency(currentPayment?.invoice?.balanceAmount || 0)
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })()
                                                     )}
                                                 </tbody>
                                             </table>
@@ -1066,7 +1218,18 @@ const Payment = () => {
                                                         </div>
                                                         <div className="SalesPayment-selection-card-action text-right">
                                                             <div className="SalesPayment-amount-label">Due</div>
-                                                            <div className="SalesPayment-amount-value">{formatCurrency(inv.balanceAmount)}</div>
+                                                            <div className="SalesPayment-amount-value">
+                                                                {inv.currency && inv.currency !== (companySettings?.currency || 'INR') ? (
+                                                                    <>
+                                                                        <div style={{ fontWeight: '600' }}>{formatDocCurrency(inv.balanceAmount, inv.currency)}</div>
+                                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>
+                                                                            ({formatCurrency(inv.balanceAmount * getSyncRate(inv.currency, companySettings?.currency || 'INR'))})
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    formatCurrency(inv.balanceAmount)
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -1192,23 +1355,37 @@ const Payment = () => {
                                                 />
                                             </div>
 
-                                            <div className="SalesPayment-form-group">
-                                                <label className="SalesPayment-form-label">Discount Allowed</label>
-                                                <input
-                                                    type="number"
-                                                    className="SalesPayment-form-input"
-                                                    disabled={isViewMode}
-                                                    value={discountAmount}
-                                                    onChange={(e) => {
-                                                        const valStr = e.target.value;
-                                                        setDiscountAmount(valStr);
-                                                        const val = parseFloat(valStr || 0);
-                                                        if (selectedInvoice) {
-                                                            setAmountReceived(Math.max(0, dueAmount - val));
-                                                        }
-                                                    }}
-                                                />
-                                            </div>
+                                            {(() => {
+                                                const invoiceCurrency = selectedInvoice?.currency || companySettings?.currency || 'INR';
+                                                const baseCurrency = companySettings?.currency || 'INR';
+                                                const rate = getSyncRate(invoiceCurrency, baseCurrency) || 1.0;
+                                                return (
+                                                    <div className="SalesPayment-form-group">
+                                                        <label className="SalesPayment-form-label">Discount Allowed ({companySettings?.currency || 'INR'})</label>
+                                                        <input
+                                                            type="number"
+                                                            className="SalesPayment-form-input"
+                                                            disabled={isViewMode}
+                                                            value={discountAmount ? (parseFloat(discountAmount) * rate).toFixed(2) : ''}
+                                                            onChange={(e) => {
+                                                                const inrDiscount = parseFloat(e.target.value) || 0;
+                                                                const usdDiscount = rate > 0 ? inrDiscount / rate : inrDiscount;
+                                                                setDiscountAmount(usdDiscount.toFixed(5));
+                                                                if (selectedInvoice) {
+                                                                    setAmountReceived(Math.max(0, dueAmount - usdDiscount).toFixed(5));
+                                                                }
+                                                            }}
+                                                            onBlur={(e) => {
+                                                                const inrDiscount = parseFloat(e.target.value) || 0;
+                                                                const usdDiscount = rate > 0 ? inrDiscount / rate : inrDiscount;
+                                                                setDiscountAmount(usdDiscount.toFixed(5));
+                                                            }}
+                                                            step="0.01"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </div>
+                                                );
+                                            })()}
 
                                             <div className="SalesPayment-form-group">
                                                 <label className="SalesPayment-form-label">Discount Account</label>
@@ -1228,20 +1405,44 @@ const Payment = () => {
                                                 {/* <div className="SalesPayment-text-xs SalesPayment-text-slate-500 mt-1">Direct Expenses ledgers. Required if discount is &gt; 0.</div> */}
                                             </div>
 
-                                            <div className="amount -section SalesPayment-form-group SalesPayment-bg-green-50 SalesPayment-rounded-lg SalesPayment-border SalesPayment-border-green-100">
-                                                <div className="SalesPayment-form-group SalesPayment-mb-0">
-                                                    <label className="SalesPayment-form-label SalesPayment-text-green-800 font-bold">Amount Received</label>
-                                                    <div className="SalesPayment-input-with-symbol SalesPayment-text-lg">
-                                                        <input
-                                                            type="number"
-                                                            className="SalesPayment-form-input SalesPayment-text-2xl font-bold SalesPayment-text-green-700 SalesPayment-h-12"
-                                                            disabled={isViewMode}
-                                                            value={amountReceived}
-                                                            onChange={(e) => setAmountReceived(e.target.value)}
-                                                        />
+                                            {(() => {
+                                                const invoiceCurrency = selectedInvoice?.currency || companySettings?.currency || 'INR';
+                                                const baseCurrency = companySettings?.currency || 'INR';
+                                                const rate = getSyncRate(invoiceCurrency, baseCurrency) || 1.0;
+                                                return (
+                                                    <div className="amount -section SalesPayment-form-group SalesPayment-bg-green-50 SalesPayment-rounded-lg SalesPayment-border SalesPayment-border-green-100">
+                                                        <div className="SalesPayment-form-group SalesPayment-mb-0">
+                                                            <label className="SalesPayment-form-label SalesPayment-text-green-800 font-bold">Amount Received ({companySettings?.currency || 'INR'})</label>
+                                                            <div className="SalesPayment-input-with-symbol SalesPayment-text-lg">
+                                                                {isViewMode ? (
+                                                                    <input
+                                                                        type="text"
+                                                                        className="SalesPayment-form-input SalesPayment-text-2xl font-bold SalesPayment-text-green-700 SalesPayment-h-12"
+                                                                        disabled
+                                                                        value={formatCurrency(amountReceived * rate)}
+                                                                    />
+                                                                ) : (
+                                                                    <input
+                                                                        type="number"
+                                                                        className="SalesPayment-form-input SalesPayment-text-2xl font-bold SalesPayment-text-green-700 SalesPayment-h-12"
+                                                                        value={amountReceived ? (parseFloat(amountReceived) * rate).toFixed(2) : ''}
+                                                                        onChange={(e) => {
+                                                                            const inrVal = parseFloat(e.target.value) || 0;
+                                                                            setAmountReceived(rate > 0 ? (inrVal / rate).toFixed(5) : inrVal);
+                                                                        }}
+                                                                        onBlur={(e) => {
+                                                                            const inrVal = parseFloat(e.target.value) || 0;
+                                                                            setAmountReceived(rate > 0 ? (inrVal / rate).toFixed(5) : inrVal.toFixed(2));
+                                                                        }}
+                                                                        step="0.01"
+                                                                        placeholder="0.00"
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </div>
+                                                );
+                                            })()}
                                         </div>
                                         {/* Custom Fields Section */}
                                         {getCustomFieldsForType('receipt').length > 0 && (
@@ -1315,8 +1516,26 @@ const Payment = () => {
                                                                     <tr key={inv.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                                         <td style={{ padding: '12px 16px', fontWeight: '500', color: '#1e293b' }}>{inv.invoiceNumber}</td>
                                                                         <td style={{ padding: '12px 16px', color: '#64748b' }}>{new Date(inv.date).toLocaleDateString()}</td>
-                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', color: '#1e293b' }}>{formatCurrency(inv.totalAmount)}</td>
-                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: '#d97706' }}>{formatCurrency(maxDue)}</td>
+                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', color: '#1e293b' }}>
+                                                                            {inv.currency && inv.currency !== (companySettings?.currency || 'INR') ? (
+                                                                                <>
+                                                                                    <div style={{ fontWeight: '600' }}>{formatDocCurrency(inv.totalAmount, inv.currency)}</div>
+                                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(inv.totalAmount * getSyncRate(inv.currency || 'USD', companySettings?.currency || 'INR'))})</div>
+                                                                                </>
+                                                                            ) : (
+                                                                                formatCurrency(inv.totalAmount)
+                                                                            )}
+                                                                        </td>
+                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: '#d97706' }}>
+                                                                            {inv.currency && inv.currency !== (companySettings?.currency || 'INR') ? (
+                                                                                <>
+                                                                                    <div>{formatDocCurrency(maxDue, inv.currency)}</div>
+                                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency(maxDue * getSyncRate(inv.currency || 'USD', companySettings?.currency || 'INR'))})</div>
+                                                                                </>
+                                                                            ) : (
+                                                                                formatCurrency(maxDue)
+                                                                            )}
+                                                                        </td>
                                                                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                                                                             <input
                                                                                 type="number"
@@ -1333,6 +1552,11 @@ const Payment = () => {
                                                                                     handleAllocationChange(inv.id, val === '' ? '' : capped);
                                                                                 }}
                                                                             />
+                                                                            {allocatedVal && inv.currency && inv.currency !== (companySettings?.currency || 'INR') && (
+                                                                                <div style={{ fontSize: '0.75rem', color: '#2563eb', marginTop: '4px', fontWeight: '500' }}>
+                                                                                    ({formatCurrency(parseFloat(allocatedVal || 0) * getSyncRate(inv.currency || 'USD', companySettings?.currency || 'INR'))})
+                                                                                </div>
+                                                                            )}
                                                                         </td>
                                                                     </tr>
                                                                 );
@@ -1345,24 +1569,61 @@ const Payment = () => {
                                                     No unpaid invoices found for this customer. Any payment received will be recorded as advance/on account.
                                                 </div>
                                             )}
+                                            {(() => {
+                                                 const summaryCurr = selectedInvoice?.currency || companySettings?.currency || 'INR';
+                                                 const summaryRate = getSyncRate(summaryCurr, companySettings?.currency || 'INR') || 1.0;
+                                                 const isForeign = summaryCurr !== (companySettings?.currency || 'INR');
+                                                 return (
+                                                     <div className="SalesPayment-allocation-summary" style={{ marginTop: '16px', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
+                                                         <div>
+                                                             <span style={{ color: '#64748b', marginRight: '8px' }}>Total Received:</span>
+                                                             <span style={{ fontWeight: '700', color: '#1e293b' }}>
+                                                                 {isForeign ? (
+                                                                     <>
+                                                                         <span>{formatDocCurrency(amountReceived || 0, summaryCurr)}</span>
+                                                                         <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b', marginLeft: '6px' }}>
+                                                                             ({formatCurrency((amountReceived || 0) * summaryRate)})
+                                                                         </span>
+                                                                     </>
+                                                                 ) : (
+                                                                     formatCurrency(amountReceived || 0)
+                                                                 )}
+                                                             </span>
+                                                         </div>
+                                                         <div>
+                                                             <span style={{ color: '#64748b', marginRight: '8px' }}>Total Allocated:</span>
+                                                             <span style={{ fontWeight: '700', color: '#2563eb' }}>
+                                                                 {isForeign ? (
+                                                                     <>
+                                                                         <span>{formatDocCurrency(totalAllocated, summaryCurr)}</span>
+                                                                         <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b', marginLeft: '6px' }}>
+                                                                             ({formatCurrency(totalAllocated * summaryRate)})
+                                                                         </span>
+                                                                     </>
+                                                                 ) : (
+                                                                     formatCurrency(totalAllocated)
+                                                                 )}
+                                                             </span>
+                                                         </div>
+                                                         <div>
+                                                             <span style={{ color: '#64748b', marginRight: '8px' }}>Unallocated (Advance):</span>
+                                                             <span style={{ fontWeight: '700', color: remainingAmount > 0.01 ? '#16a34a' : '#64748b' }}>
+                                                                 {isForeign ? (
+                                                                     <>
+                                                                         <span>{formatDocCurrency(remainingAmount, summaryCurr)}</span>
+                                                                         <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b', marginLeft: '6px' }}>
+                                                                             ({formatCurrency(remainingAmount * summaryRate)})
+                                                                         </span>
+                                                                     </>
+                                                                 ) : (
+                                                                     formatCurrency(remainingAmount)
+                                                                 )}
+                                                             </span>
+                                                         </div>
+                                                     </div>
+                                                 );
+                                             })()}
 
-                                            {/* Allocation Summary Info */}
-                                            <div className="SalesPayment-allocation-summary" style={{ marginTop: '16px', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
-                                                <div>
-                                                    <span style={{ color: '#64748b', marginRight: '8px' }}>Total Received:</span>
-                                                    <span style={{ fontWeight: '700', color: '#1e293b' }}>{formatCurrency(amountReceived || 0)}</span>
-                                                </div>
-                                                <div>
-                                                    <span style={{ color: '#64748b', marginRight: '8px' }}>Total Allocated:</span>
-                                                    <span style={{ fontWeight: '700', color: '#2563eb' }}>{formatCurrency(totalAllocated)}</span>
-                                                </div>
-                                                <div>
-                                                    <span style={{ color: '#64748b', marginRight: '8px' }}>Unallocated (Advance):</span>
-                                                    <span style={{ fontWeight: '700', color: remainingAmount > 0.01 ? '#16a34a' : '#64748b' }}>
-                                                        {formatCurrency(remainingAmount)}
-                                                    </span>
-                                                </div>
-                                            </div>
                                             {totalAllocated > (parseFloat(amountReceived || 0) + parseFloat(discountAmount || 0)) && (
                                                 <div style={{ marginTop: '12px', padding: '12px', borderRadius: '6px', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: '0.875rem', fontWeight: '500' }}>
                                                     ⚠️ Total allocated amount ({formatCurrency(totalAllocated)}) cannot exceed the sum of amount received and discount ({formatCurrency(parseFloat(amountReceived || 0) + parseFloat(discountAmount || 0))}). Please adjust allocations or increase the Amount Received.

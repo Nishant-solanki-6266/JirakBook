@@ -63,16 +63,68 @@ const PurchaseBill = () => {
 
     const handleCurrencyChange = async (cur) => {
         setSelectedCurrency(cur);
-        if (cur === (companySettings?.currency || 'USD')) {
+        let rateVal = 1.0;
+        if (cur === (companySettings?.currency || 'INR')) {
             setExchangeRate(1.0);
         } else {
             try {
-                const rate = await getExchangeRateFor(cur, companySettings?.currency || 'USD');
-                setExchangeRate(rate.toFixed(6));
+                rateVal = await getExchangeRateFor(cur, companySettings?.currency || 'INR');
+                setExchangeRate(rateVal.toFixed(6));
             } catch (e) {
+                rateVal = 1.0;
                 setExchangeRate(1.0);
             }
         }
+
+        // Convert existing items rates to the new currency
+        setItems(prevItems => prevItems.map(item => {
+            let basePrice = 0;
+            if (item.productId) {
+                const prod = products.find(p => p.id === parseInt(item.productId));
+                if (prod) {
+                    basePrice = prod.purchasePrice || 0;
+                    // Apply UOM multiplier if any
+                    const uom = allUoms.find(u => u.id === item.uomId) || prod.uom || prod.purchaseUom || prod.salesUom;
+                    const multiplier = uom?.uomType === 'Compound' ? parseFloat(uom.conversionRate) || 1 : 1;
+                    basePrice = basePrice * multiplier;
+                }
+            } else {
+                // If it's a custom line item with no product, convert the current rate directly
+                const prevRate = parseFloat(item.rate) || 0;
+                const prevConversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
+                const priceInBase = prevRate * prevConversionRate;
+                const converted = priceInBase / rateVal;
+                
+                const qty = parseFloat(item.qty) || 0;
+                const rate = Number(converted.toFixed(6)) || 0;
+                const tax = parseFloat(item.tax) || 0;
+                const discount = parseFloat(item.discount) || 0;
+                const subtotal = qty * rate;
+                const taxable = subtotal - discount;
+                const taxAmount = (taxable * tax) / 100;
+                return {
+                    ...item,
+                    rate: rate,
+                    total: taxable + taxAmount
+                };
+            }
+
+            const conversionRate = rateVal;
+            const converted = basePrice / conversionRate;
+            const qty = parseFloat(item.qty) || 0;
+            const rate = Number(converted.toFixed(6)) || 0;
+            const tax = parseFloat(item.tax) || 0;
+            const discount = parseFloat(item.discount) || 0;
+            const subtotal = qty * rate;
+            const taxable = subtotal - discount;
+            const taxAmount = (taxable * tax) / 100;
+
+            return {
+                ...item,
+                rate: rate,
+                total: taxable + taxAmount
+            };
+        }));
     };
 
     const formatDocCurrency = (amount, currencyCode) => {
@@ -203,7 +255,7 @@ const PurchaseBill = () => {
     const [editingId, setEditingId] = useState(null);
     const [isViewMode, setIsViewMode] = useState(false);
     const [viewBill, setViewBill] = useState(null);
-    const viewRate = getSyncRate(viewBill?.currency || 'USD', companySettings?.currency || 'KWD');
+    const viewRate = getSyncRate(viewBill?.currency || 'USD', companySettings?.currency || 'INR');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [deleteId, setDeleteId] = useState(null);
     const [expandedGroups, setExpandedGroups] = useState({});
@@ -1557,8 +1609,9 @@ const PurchaseBill = () => {
                 if (field === 'productId') {
                     const prod = products.find(p => p.id === parseInt(value));
                     if (prod) {
+                        const conversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
                         updatedItem.uomId = prod.purchaseUomId || prod.uomId || '';
-                        updatedItem.rate = prod.purchasePrice || 0;
+                        updatedItem.rate = Number(((prod.purchasePrice || 0) / conversionRate).toFixed(6));
                         updatedItem.description = prod.description || '';
                     }
                 } else if (field === 'uomId') {
@@ -1569,10 +1622,11 @@ const PurchaseBill = () => {
                         const newUom = allUoms.find(u => u.id === newUomId) || prod.uom || prod.purchaseUom || prod.salesUom;
                         const basePrice = prod.purchasePrice || 0;
                         const multiplier = newUom?.uomType === 'Compound' ? parseFloat(newUom.conversionRate) || 1 : 1;
+                        const conversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
                         updatedItem = {
                             ...item,
                             uomId: newUomId,
-                            rate: basePrice * multiplier
+                            rate: Number(((basePrice * multiplier) / conversionRate).toFixed(6))
                         };
                     } else {
                         updatedItem = { ...item, uomId: newUomId };
@@ -1886,9 +1940,9 @@ const PurchaseBill = () => {
                                                     {iIdx === 0 ? (
                                                         <>
                                                             {formatDocCurrency(bill.totalAmount, bill.currency)}
-                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'INR') && (
                                                                 <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                    ({formatDocCurrency(bill.totalAmount * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                    ({formatDocCurrency(bill.totalAmount * (getSyncRate(bill.currency, companySettings?.currency || 'INR') || 1.0), companySettings?.currency || 'INR')})
                                                                 </div>
                                                             )}
                                                         </>
@@ -1898,9 +1952,9 @@ const PurchaseBill = () => {
                                                     {iIdx === 0 ? (
                                                         <>
                                                             {formatDocCurrency(bill.totalAmount - bill.balanceAmount, bill.currency)}
-                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'INR') && (
                                                                 <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                    ({formatDocCurrency((bill.totalAmount - bill.balanceAmount) * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                    ({formatDocCurrency((bill.totalAmount - bill.balanceAmount) * (getSyncRate(bill.currency, companySettings?.currency || 'INR') || 1.0), companySettings?.currency || 'INR')})
                                                                 </div>
                                                             )}
                                                         </>
@@ -1910,9 +1964,9 @@ const PurchaseBill = () => {
                                                     {iIdx === 0 ? (
                                                         <>
                                                             {formatDocCurrency(bill.balanceAmount, bill.currency)}
-                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'KWD') && (
+                                                            {bill.currency && bill.currency !== (companySettings?.currency || 'INR') && (
                                                                 <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                    ({formatDocCurrency(bill.balanceAmount * (bill.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
+                                                                    ({formatDocCurrency(bill.balanceAmount * (getSyncRate(bill.currency, companySettings?.currency || 'INR') || 1.0), companySettings?.currency || 'INR')})
                                                                 </div>
                                                             )}
                                                         </>
@@ -1951,9 +2005,9 @@ const PurchaseBill = () => {
                                             {getInvoiceLabel('showRate') !== false && (
                                                 <td style={{ textAlign: 'right' }}>
                                                     {formatDocCurrency(item.rate, viewBill.currency)}
-                                                    {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                    {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                         <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                            ({formatDocCurrency(item.rate * viewRate, companySettings?.currency || 'KWD')})
+                                                            ({formatDocCurrency(item.rate * viewRate, companySettings?.currency || 'INR')})
                                                         </div>
                                                     )}
                                                 </td>
@@ -1961,9 +2015,9 @@ const PurchaseBill = () => {
                                             {getInvoiceLabel('showTax') !== false && <td style={{ textAlign: 'right' }}>{item.taxRate}%</td>}
                                             <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
                                                 {formatDocCurrency(item.amount, viewBill.currency)}
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                        ({formatDocCurrency(item.amount * viewRate, companySettings?.currency || 'KWD')})
+                                                        ({formatDocCurrency(item.amount * viewRate, companySettings?.currency || 'INR')})
                                                     </div>
                                                 )}
                                             </td>
@@ -1984,7 +2038,7 @@ const PurchaseBill = () => {
                                                 <span style={{ fontWeight: '600' }}>{formatCurrency(viewBill.totalBillAmount)}</span>
                                             </div>
                                             {Object.keys(viewBill.currencyTotals || {}).map(curr => {
-                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                const baseCurr = companySettings?.currency || 'INR';
                                                 if (curr === baseCurr) return null;
                                                 const originalTotal = viewBill.bills.filter(b => (b.currency || baseCurr) === curr).reduce((sum, b) => sum + b.totalAmount, 0);
                                                 return (
@@ -2000,7 +2054,7 @@ const PurchaseBill = () => {
                                                 <span style={{ color: '#16a34a', fontWeight: '700' }}>{formatCurrency(viewBill.totalBillAmount - viewBill.balanceAmount)}</span>
                                             </div>
                                             {Object.keys(viewBill.currencyTotals || {}).map(curr => {
-                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                const baseCurr = companySettings?.currency || 'INR';
                                                 if (curr === baseCurr) return null;
                                                 const originalPaid = viewBill.bills.filter(b => (b.currency || baseCurr) === curr).reduce((sum, b) => sum + (b.totalAmount - b.balanceAmount), 0);
                                                 return (
@@ -2016,7 +2070,7 @@ const PurchaseBill = () => {
                                                 <span style={{ fontWeight: '700' }}>{formatCurrency(viewBill.balanceAmount)}</span>
                                             </div>
                                             {Object.keys(viewBill.currencyTotals || {}).map(curr => {
-                                                const baseCurr = companySettings?.currency || 'KWD';
+                                                const baseCurr = companySettings?.currency || 'INR';
                                                 if (curr === baseCurr) return null;
                                                 const originalBalance = viewBill.currencyTotals[curr];
                                                 return (
@@ -2033,9 +2087,9 @@ const PurchaseBill = () => {
                                             <span className="invoice-label">{getInvoiceLabel('subTotal')}:</span>
                                             <span>
                                                 {formatDocCurrency(viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0), viewBill.currency)}
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
-                                                        ({formatDocCurrency((viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0)) * viewRate, companySettings?.currency || 'KWD')})
+                                                        ({formatDocCurrency((viewBill.totalAmount - (viewBill.taxAmount || 0) + (viewBill.discountAmount || 0)) * viewRate, companySettings?.currency || 'INR')})
                                                     </span>
                                                 )}
                                             </span>
@@ -2044,9 +2098,9 @@ const PurchaseBill = () => {
                                             <span className="invoice-label">Discount:</span>
                                             <span>
                                                 <span style={{ color: '#ef4444' }}>- {formatDocCurrency(viewBill.discountAmount || 0, viewBill.currency)}</span>
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
-                                                        (- {formatDocCurrency((viewBill.discountAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                        (- {formatDocCurrency((viewBill.discountAmount || 0) * viewRate, companySettings?.currency || 'INR')})
                                                     </span>
                                                 )}
                                             </span>
@@ -2055,9 +2109,9 @@ const PurchaseBill = () => {
                                             <span className="invoice-label">{getInvoiceLabel('tax')}:</span>
                                             <span>
                                                 <span>+ {formatDocCurrency(viewBill.taxAmount || 0, viewBill.currency)}</span>
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
-                                                        (+ {formatDocCurrency((viewBill.taxAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                        (+ {formatDocCurrency((viewBill.taxAmount || 0) * viewRate, companySettings?.currency || 'INR')})
                                                     </span>
                                                 )}
                                             </span>
@@ -2066,9 +2120,9 @@ const PurchaseBill = () => {
                                             <span>{getInvoiceLabel('total')}:</span>
                                             <span>
                                                 {formatDocCurrency(viewBill.totalAmount, viewBill.currency)}
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
-                                                        ({formatDocCurrency((viewBill.totalAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                        ({formatDocCurrency((viewBill.totalAmount || 0) * viewRate, companySettings?.currency || 'INR')})
                                                     </span>
                                                 )}
                                             </span>
@@ -2077,9 +2131,9 @@ const PurchaseBill = () => {
                                             <span className="invoice-label">Amount Paid:</span>
                                             <span>
                                                 {formatDocCurrency(viewBill.paidAmount || 0, viewBill.currency)}
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
-                                                        ({formatDocCurrency((viewBill.paidAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                        ({formatDocCurrency((viewBill.paidAmount || 0) * viewRate, companySettings?.currency || 'INR')})
                                                     </span>
                                                 )}
                                             </span>
@@ -2088,9 +2142,9 @@ const PurchaseBill = () => {
                                             <span className="invoice-label">Balance Due:</span>
                                             <span>
                                                 {formatDocCurrency(viewBill.balanceAmount, viewBill.currency)}
-                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'KWD') && (
+                                                {viewBill.currency && viewBill.currency !== (companySettings?.currency || 'INR') && (
                                                     <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
-                                                        ({formatDocCurrency((viewBill.balanceAmount || 0) * viewRate, companySettings?.currency || 'KWD')})
+                                                        ({formatDocCurrency((viewBill.balanceAmount || 0) * viewRate, companySettings?.currency || 'INR')})
                                                     </span>
                                                 )}
                                             </span>
@@ -2321,12 +2375,12 @@ const PurchaseBill = () => {
                                             latestDueDate: b.dueDate
                                         };
                                     }
-                                    const rate = getSyncRate(b.currency || 'USD', companySettings?.currency || 'KWD');
+                                    const rate = getSyncRate(b.currency || 'USD', companySettings?.currency || 'INR');
                                     groupedMap[key].bills.push(b);
                                     groupedMap[key].totalBillAmount += b.totalAmount * rate;
                                     groupedMap[key].balanceAmount += b.balanceAmount * rate;
 
-                                    const curr = b.currency || companySettings?.currency || 'KWD';
+                                    const curr = b.currency || companySettings?.currency || 'INR';
                                     if (!groupedMap[key].currencyTotals) {
                                         groupedMap[key].currencyTotals = {};
                                     }
@@ -2338,7 +2392,7 @@ const PurchaseBill = () => {
                                     if (b.purchasereturn) {
                                         b.purchasereturn.forEach(ret => {
                                             groupedMap[key].returns.push(ret);
-                                            const retRate = getSyncRate(ret.currency || b.currency || 'USD', companySettings?.currency || 'KWD');
+                                            const retRate = getSyncRate(ret.currency || b.currency || 'USD', companySettings?.currency || 'INR');
                                             groupedMap[key].totalReturnAmount += (ret.totalAmount || 0) * retRate;
                                         });
                                     }
@@ -2383,7 +2437,7 @@ const PurchaseBill = () => {
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                     {(() => {
                                                         const currs = Object.keys(group.currencyTotals || {});
-                                                        const baseCurr = companySettings?.currency || 'KWD';
+                                                        const baseCurr = companySettings?.currency || 'INR';
                                                         if (currs.length === 1) {
                                                             const curr = currs[0];
                                                             const originalAmount = group.currencyTotals[curr];
@@ -2472,42 +2526,44 @@ const PurchaseBill = () => {
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
-                                                                    {group.bills.map(pb => (
-                                                                        <tr key={`pb-${pb.id}`} style={{ borderTop: '1px solid #f1f5f9' }}>
-                                                                            <td style={{ padding: '10px', fontWeight: 'bold', color: '#64748b' }}>BILL</td>
-                                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>{pb.billNumber}</td>
-                                                                            <td style={{ padding: '10px' }}>{new Date(pb.date).toLocaleDateString()}</td>
-                                                                            <td style={{ padding: '10px' }}>
-                                                                                {formatDocCurrency(pb.totalAmount, pb.currency)}
-                                                                                {pb.currency && pb.currency !== (companySettings?.currency || 'KWD') && (
-                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                                        ({formatDocCurrency(pb.totalAmount * (pb.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                            <td style={{ padding: '10px', fontWeight: 'bold' }}>
-                                                                                {formatDocCurrency(pb.balanceAmount, pb.currency)}
-                                                                                {pb.currency && pb.currency !== (companySettings?.currency || 'KWD') && (
-                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                                        ({formatDocCurrency(pb.balanceAmount * (pb.exchangeRate || 1.0), companySettings?.currency || 'KWD')})
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                            <td style={{ padding: '10px' }}>
-                                                                                <select
-                                                                                    value={pb.manualStatus ? pb.status : 'AUTO'}
-                                                                                    onChange={(e) => handleStatusChange(pb.id, e.target.value)}
-                                                                                    className="PBILL-status-pill"
-                                                                                    style={getStatusStyle(pb.manualStatus ? pb.status : 'AUTO')}
-                                                                                >
-                                                                                    <option value="AUTO">Auto ({pb.status})</option>
-                                                                                    <option value="UNPAID">UNPAID</option>
-                                                                                    <option value="PARTIAL">PARTIAL</option>
-                                                                                    <option value="PAID">PAID</option>
-                                                                                    <option value="OVERDUE">OVERDUE</option>
-                                                                                    <option value="CANCELLED">CANCELLED</option>
-                                                                                </select>
-                                                                            </td>
+                                                                    {group.bills.map(pb => {
+                                                                        const subRate = getSyncRate(pb.currency || 'USD', companySettings?.currency || 'INR');
+                                                                        return (
+                                                                            <tr key={`pb-${pb.id}`} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                                                                <td style={{ padding: '10px', fontWeight: 'bold', color: '#64748b' }}>BILL</td>
+                                                                                <td style={{ padding: '10px', fontWeight: 'bold' }}>{pb.billNumber}</td>
+                                                                                <td style={{ padding: '10px' }}>{new Date(pb.date).toLocaleDateString()}</td>
+                                                                                <td style={{ padding: '10px' }}>
+                                                                                    {formatDocCurrency(pb.totalAmount, pb.currency)}
+                                                                                    {pb.currency && pb.currency !== (companySettings?.currency || 'INR') && (
+                                                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                            ({formatDocCurrency(pb.totalAmount * subRate, companySettings?.currency || 'INR')})
+                                                                                        </div>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td style={{ padding: '10px', fontWeight: 'bold' }}>
+                                                                                    {formatDocCurrency(pb.balanceAmount, pb.currency)}
+                                                                                    {pb.currency && pb.currency !== (companySettings?.currency || 'INR') && (
+                                                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                            ({formatDocCurrency(pb.balanceAmount * subRate, companySettings?.currency || 'INR')})
+                                                                                        </div>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td style={{ padding: '10px' }}>
+                                                                                    <select
+                                                                                        value={pb.manualStatus ? pb.status : 'AUTO'}
+                                                                                        onChange={(e) => handleStatusChange(pb.id, e.target.value)}
+                                                                                        className="PBILL-status-pill"
+                                                                                        style={getStatusStyle(pb.manualStatus ? pb.status : 'AUTO')}
+                                                                                    >
+                                                                                        <option value="AUTO">Auto ({pb.status})</option>
+                                                                                        <option value="UNPAID">UNPAID</option>
+                                                                                        <option value="PARTIAL">PARTIAL</option>
+                                                                                        <option value="PAID">PAID</option>
+                                                                                        <option value="OVERDUE">OVERDUE</option>
+                                                                                        <option value="CANCELLED">CANCELLED</option>
+                                                                                    </select>
+                                                                                </td>
                                                                             <td style={{ padding: '10px', textAlign: 'right' }}>
                                                                                 <div className="PBILL-action-group" style={{ justifyContent: 'flex-end', gap: '6px' }}>
                                                                                     {pb.balanceAmount > 0 && hasPermission('create purchase payment') && (
@@ -2542,7 +2598,8 @@ const PurchaseBill = () => {
                                                                                 </div>
                                                                             </td>
                                                                         </tr>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                     {group.returns.map(pr => (
                                                                         <tr key={`pr-${pr.id}`} style={{ borderTop: '1px solid #f1f5f9', background: '#fff1f2' }}>
                                                                             <td style={{ padding: '10px', fontWeight: 'bold', color: '#be123c' }}>RETURN</td>

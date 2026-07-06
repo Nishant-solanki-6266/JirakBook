@@ -17,7 +17,26 @@ import { CompanyContext } from '../../../../context/CompanyContext';
 import companyService from '../../../../api/companyService';
 
 const PurchaseReturn = () => {
-    const { formatCurrency, companySettings, getDocumentTitle } = useContext(CompanyContext);
+    const { formatCurrency, companySettings, getDocumentTitle, getSyncRate } = useContext(CompanyContext);
+    const formatDocCurrency = (amount, currencyCode) => {
+        const docCurrency = currencyCode || companySettings?.currency || 'USD';
+        const localeMap = {
+            'INR': 'en-IN', 'AED': 'ar-AE', 'SAR': 'ar-SA', 'EUR': 'de-DE', 'GBP': 'en-GB',
+            'JPY': 'ja-JP', 'CNY': 'zh-CN', 'RUB': 'ru-RU', 'BRL': 'pt-BR', 'CAD': 'en-CA',
+            'AUD': 'en-AU', 'PKR': 'en-PK', 'BDT': 'en-BD'
+        };
+        const locale = localeMap[docCurrency] || 'en-US';
+        try {
+            return new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency: docCurrency,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount || 0);
+        } catch (e) {
+            return `${docCurrency} ${(amount || 0).toFixed(2)}`;
+        }
+    };
     const { hasPermission } = useContext(AuthContext);
     const location = useLocation();
     const navigate = useNavigate();
@@ -609,7 +628,21 @@ const PurchaseReturn = () => {
                                         <td>{item.purchasebill?.billNumber || item.purchaseBill?.billNumber || '-'}</td>
                                         <td>{item.vendor?.name}</td>
                                         <td>{new Date(item.date).toLocaleDateString()}</td>
-                                        <td className="pretn-amount-text">{formatCurrency(item.totalAmount)}</td>
+                                        <td className="pretn-amount-text">
+                                             {item.purchasebill?.currency && item.purchasebill?.currency !== (companySettings?.currency || 'INR') ? (
+                                                 (() => {
+                                                     const liveRate = getSyncRate(item.purchasebill.currency, companySettings?.currency || 'INR') || 1;
+                                                     return (
+                                                         <>
+                                                             <div>{formatDocCurrency(item.totalAmount || 0, item.purchasebill.currency)}</div>
+                                                             <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((item.totalAmount || 0) * liveRate)})</div>
+                                                         </>
+                                                     );
+                                                 })()
+                                             ) : (
+                                                 formatCurrency(item.totalAmount || 0)
+                                             )}
+                                         </td>
                                         <td>
                                             <span className={`pretn-status ${item.status?.toLowerCase() || 'pending'}`}>
                                                 {item.status}
@@ -897,8 +930,36 @@ const PurchaseReturn = () => {
                                                         <td><strong>{item.product?.name || item.productName || 'Unknown Product'}</strong></td>
                                                         <td>{item.warehouse?.name || selectedReturn.warehouse?.name || '—'}</td>
                                                         <td style={{ textAlign: 'center' }}>{item.quantity || 0}</td>
-                                                        <td style={{ textAlign: 'right' }}>{formatCurrency(item.rate || 0)}</td>
-                                                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(item.amount || 0)}</td>
+                                                        <td style={{ textAlign: 'right' }}>
+                                                            {selectedReturn.purchasebill?.currency && selectedReturn.purchasebill?.currency !== (companySettings?.currency || 'INR') ? (
+                                                                (() => {
+                                                                    const liveRate = getSyncRate(selectedReturn.purchasebill.currency, companySettings?.currency || 'INR') || 1;
+                                                                    return (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(item.rate || 0, selectedReturn.purchasebill.currency)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency((item.rate || 0) * liveRate)})</div>
+                                                                        </>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                formatCurrency(item.rate || 0)
+                                                            )}
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                                            {selectedReturn.purchasebill?.currency && selectedReturn.purchasebill?.currency !== (companySettings?.currency || 'INR') ? (
+                                                                (() => {
+                                                                    const liveRate = getSyncRate(selectedReturn.purchasebill.currency, companySettings?.currency || 'INR') || 1;
+                                                                    return (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(item.amount || 0, selectedReturn.purchasebill.currency)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((item.amount || 0) * liveRate)})</div>
+                                                                        </>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                formatCurrency(item.amount || 0)
+                                                            )}
+                                                        </td>
                                                     </tr>
                                                 ))
                                             ) : (
@@ -906,10 +967,24 @@ const PurchaseReturn = () => {
                                             )}
                                         </tbody>
                                         <tfoot>
-                                            <tr className="pr-total-row">
-                                                <td colSpan={5} style={{ textAlign: 'right', paddingRight: '1rem' }}>TOTAL AMOUNT</td>
-                                                <td style={{ textAlign: 'right', fontSize: '1.1rem', color: '#d97706' }}>{formatCurrency(selectedReturn.totalAmount || 0)}</td>
-                                            </tr>
+                                             <tr className="pr-total-row">
+                                                 <td colSpan={5} style={{ textAlign: 'right', paddingRight: '1rem' }}>TOTAL AMOUNT</td>
+                                                 <td style={{ textAlign: 'right', fontSize: '1.1rem', color: '#d97706', fontWeight: 800 }}>
+                                                     {selectedReturn.purchasebill?.currency && selectedReturn.purchasebill?.currency !== (companySettings?.currency || 'INR') ? (
+                                                         (() => {
+                                                             const liveRate = getSyncRate(selectedReturn.purchasebill.currency, companySettings?.currency || 'INR') || 1;
+                                                             return (
+                                                                 <>
+                                                                     <div>{formatDocCurrency(selectedReturn.totalAmount || 0, selectedReturn.purchasebill.currency)}</div>
+                                                                     <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((selectedReturn.totalAmount || 0) * liveRate)})</div>
+                                                                 </>
+                                                             );
+                                                         })()
+                                                     ) : (
+                                                         formatCurrency(selectedReturn.totalAmount || 0)
+                                                     )}
+                                                 </td>
+                                             </tr>
                                         </tfoot>
                                     </table>
                                 </div>

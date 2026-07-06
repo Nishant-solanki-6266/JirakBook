@@ -147,10 +147,12 @@ const createProduct = async (req, res) => {
 
                 // Accounting Integration for Opening Stock
                 try {
-                    const totalOpeningValue = parsedWarehouseInfo.reduce((sum, w) => {
+                    const totalOpeningValueInBase = parsedWarehouseInfo.reduce((sum, w) => {
                         const qty = w.quantity ? parseFloat(w.quantity) : parseFloat(w.initialQty);
                         return sum + (qty * (parseFloat(initialCost) || 0));
                     }, 0);
+
+                    const totalOpeningValue = totalOpeningValueInBase * writeRate;
 
                     if (totalOpeningValue > 0) {
                         const inventoryAsset = await prisma.ledger.findFirst({
@@ -466,10 +468,13 @@ const updateProduct = async (req, res) => {
 
                 // Re-post new Accounting Entries for updated opening stock
                 try {
-                    const totalOpeningValue = parsedWarehouseInfo.reduce((sum, w) => {
+                    const baseInitialCost = initialCost !== undefined ? parseFloat(initialCost || 0) : (existingProduct.initialCost / writeRate);
+                    const totalOpeningValueInBase = parsedWarehouseInfo.reduce((sum, w) => {
                         const qty = w.quantity ? parseFloat(w.quantity) : parseFloat(w.initialQty);
-                        return sum + (qty * (parseFloat(initialCost || existingProduct.initialCost) || 0));
+                        return sum + (qty * baseInitialCost);
                     }, 0);
+
+                    const totalOpeningValue = totalOpeningValueInBase * writeRate;
 
                     if (totalOpeningValue > 0) {
                         const inventoryAsset = await prisma.ledger.findFirst({

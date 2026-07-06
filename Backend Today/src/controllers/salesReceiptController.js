@@ -140,9 +140,17 @@ const createReceipt = async (req, res) => {
             });
 
             // 3. Process Allocations and update Invoice balances
+            let totalLedgerAmount = 0;
+            let totalLedgerDiscount = 0;
+            const appliedDiscount = parseFloat(parsedDiscount || 0);
+
+            // Sum allocations
+            const allocatedSum = normalizedAllocations.reduce((sum, a) => sum + a.amount, 0);
+            const unallocatedAmount = parsedAmount - allocatedSum;
+
             for (let i = 0; i < normalizedAllocations.length; i++) {
                 const alloc = normalizedAllocations[i];
-                const allocDiscount = (i === 0) ? parsedDiscount : 0; 
+                const allocDiscount = (i === 0) ? appliedDiscount : 0; 
                 
                 await updateInvoiceBalance(tx, alloc.invoiceId, alloc.invoiceType, alloc.amount + allocDiscount);
                 
@@ -156,7 +164,18 @@ const createReceipt = async (req, res) => {
                         }
                     });
                 }
+
+                let rate = 1.0;
+                if (alloc.invoiceType === 'TAX_INVOICE') {
+                    const inv = await tx.invoice.findUnique({ where: { id: alloc.invoiceId } });
+                    rate = inv?.exchangeRate || 1.0;
+                }
+                totalLedgerAmount += alloc.amount * rate;
+                totalLedgerDiscount += allocDiscount * rate;
             }
+
+            // Unallocated is in base currency
+            totalLedgerAmount += unallocatedAmount;
 
             // 4. Create Double Entry Transactions
             const transactions = [];
@@ -168,7 +187,7 @@ const createReceipt = async (req, res) => {
                 voucherNumber: receiptNumber,
                 debitLedgerId: bankLedger.id,
                 creditLedgerId: customer.ledgerId,
-                amount: parsedAmount,
+                amount: totalLedgerAmount,
                 narration: `Payment received from ${customer.name}`,
                 companyId: parseInt(companyId),
                 journalEntryId: journalEntry.id,
@@ -176,14 +195,14 @@ const createReceipt = async (req, res) => {
             });
 
             // Debit: Discount
-            if (parsedDiscount > 0 && discountLedgerId) {
+            if (totalLedgerDiscount > 0 && discountLedgerId) {
                 transactions.push({
                     date: new Date(date),
                     voucherType: 'RECEIPT',
                     voucherNumber: receiptNumber,
                     debitLedgerId: parseInt(discountLedgerId),
                     creditLedgerId: customer.ledgerId,
-                    amount: parsedDiscount,
+                    amount: totalLedgerDiscount,
                     narration: `Discount allowed to ${customer.name}`,
                     companyId: parseInt(companyId),
                     journalEntryId: journalEntry.id,
@@ -383,6 +402,11 @@ const updateReceipt = async (req, res) => {
                 }
             });
 
+            let totalLedgerAmount = 0;
+            let totalLedgerDiscount = 0;
+            const newAllocatedSum = normalizedNewAllocations.reduce((sum, a) => sum + a.amount, 0);
+            const unallocatedAmount = finalAmount - newAllocatedSum;
+
             for (let i = 0; i < normalizedNewAllocations.length; i++) {
                 const alloc = normalizedNewAllocations[i];
                 const allocDiscount = (i === 0) ? finalDiscount : 0;
@@ -399,7 +423,18 @@ const updateReceipt = async (req, res) => {
                         }
                     });
                 }
+
+                let rate = 1.0;
+                if (alloc.invoiceType === 'TAX_INVOICE') {
+                    const inv = await tx.invoice.findUnique({ where: { id: alloc.invoiceId } });
+                    rate = inv?.exchangeRate || 1.0;
+                }
+                totalLedgerAmount += alloc.amount * rate;
+                totalLedgerDiscount += allocDiscount * rate;
             }
+
+            // Unallocated is in base currency
+            totalLedgerAmount += unallocatedAmount;
 
             const transactions = [];
             transactions.push({
@@ -408,7 +443,7 @@ const updateReceipt = async (req, res) => {
                 voucherNumber: existingReceipt.receiptNumber,
                 debitLedgerId: finalBankId,
                 creditLedgerId: existingReceipt.customer.ledgerId,
-                amount: finalAmount,
+                amount: totalLedgerAmount,
                 narration: `Updated Payment received from ${existingReceipt.customer.name}`,
                 companyId: parseInt(companyId),
                 journalEntryId: journalEntry.id,
@@ -422,7 +457,7 @@ const updateReceipt = async (req, res) => {
                     voucherNumber: existingReceipt.receiptNumber,
                     debitLedgerId: parseInt(finalDiscountLedgerId),
                     creditLedgerId: existingReceipt.customer.ledgerId,
-                    amount: finalDiscount,
+                    amount: totalLedgerDiscount,
                     narration: `Updated Discount allowed to ${existingReceipt.customer.name}`,
                     companyId: parseInt(companyId),
                     journalEntryId: journalEntry.id,
@@ -602,7 +637,7 @@ const getReceipts = async (req, res) => {
                 discountLedger: { select: { id: true, name: true } },
                 allocations: {
                     include: {
-                        invoice: { select: { id: true, invoiceNumber: true, balanceAmount: true, totalAmount: true, paidAmount: true, date: true, dueDate: true, status: true } }
+                        invoice: { select: { id: true, invoiceNumber: true, balanceAmount: true, totalAmount: true, paidAmount: true, date: true, dueDate: true, status: true, currency: true } }
                     }
                 }
             },
@@ -634,7 +669,7 @@ const getReceipts = async (req, res) => {
                 companyId: t.companyId, createdAt: t.createdAt, updatedAt: t.updatedAt,
                 invoice: t.posinvoice ? {
                     id: t.posinvoice.id, invoiceNumber: t.posinvoice.invoiceNumber, totalAmount: t.posinvoice.totalAmount,
-                    paidAmount: t.posinvoice.paidAmount, balanceAmount: t.posinvoice.balanceAmount, date: t.posinvoice.date, status: t.posinvoice.status
+                    paidAmount: t.posinvoice.paidAmount, balanceAmount: t.posinvoice.balanceAmount, date: t.posinvoice.date, status: t.posinvoice.status, currency: 'INR'
                 } : null
             }));
 
@@ -679,7 +714,7 @@ const getReceiptById = async (req, res) => {
             companyId: t.companyId, createdAt: t.createdAt, updatedAt: t.updatedAt,
             invoice: t.posinvoice ? {
                 id: t.posinvoice.id, invoiceNumber: t.posinvoice.invoiceNumber, totalAmount: t.posinvoice.totalAmount,
-                paidAmount: t.posinvoice.paidAmount, balanceAmount: t.posinvoice.balanceAmount, date: t.posinvoice.date, status: t.posinvoice.status
+                paidAmount: t.posinvoice.paidAmount, balanceAmount: t.posinvoice.balanceAmount, date: t.posinvoice.date, status: t.posinvoice.status, currency: 'INR'
             } : null
         }));
 

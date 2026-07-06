@@ -79,16 +79,72 @@ const Invoice = () => {
 
     const handleCurrencyChange = async (cur) => {
         setSelectedCurrency(cur);
-        if (cur === (companySettings?.currency || 'USD')) {
-            setExchangeRate(1.0);
-        } else {
+        let rateVal = 1.0;
+        if (cur !== (companySettings?.currency || 'USD')) {
             try {
-                const rate = await getExchangeRateFor(cur, companySettings?.currency || 'USD');
-                setExchangeRate(rate.toFixed(6));
+                rateVal = await getExchangeRateFor(cur, companySettings?.currency || 'USD');
             } catch (e) {
-                setExchangeRate(1.0);
+                rateVal = 1.0;
             }
         }
+        setExchangeRate(rateVal.toFixed(6));
+
+        // Convert existing items rates to the new currency
+        setItems(prevItems => prevItems.map(item => {
+            let basePrice = 0;
+            if (item.productId) {
+                const prodId = String(item.productId).startsWith('p-') ? parseInt(String(item.productId).replace('p-', '')) : parseInt(item.productId);
+                const prod = allProducts.find(p => p.id === prodId);
+                if (prod) {
+                    basePrice = prod.salePrice || 0;
+                    // Apply UOM multiplier if any
+                    const uom = allUoms.find(u => u.id === item.uomId) || prod.uom || prod.salesUom || prod.purchaseUom;
+                    const multiplier = uom?.uomType === 'Compound' ? parseFloat(uom.conversionRate) || 1 : 1;
+                    basePrice = basePrice * multiplier;
+                }
+            } else if (item.serviceId) {
+                const sId = String(item.serviceId).startsWith('s-') ? parseInt(String(item.serviceId).replace('s-', '')) : parseInt(item.serviceId);
+                const s = allServices.find(x => x.id === sId);
+                if (s) {
+                    basePrice = s.price || 0;
+                }
+            } else {
+                // If it's a custom line item with no product/service, convert the current rate directly
+                const prevRate = parseFloat(item.rate) || 0;
+                const prevConversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
+                const priceInBase = prevRate * prevConversionRate;
+                const converted = priceInBase / rateVal;
+                
+                const qty = parseFloat(item.qty) || 0;
+                const rate = Number(converted.toFixed(2)) || 0;
+                const tax = parseFloat(item.tax) || 0;
+                const discount = parseFloat(item.discount) || 0;
+                const subtotal = qty * rate;
+                const taxable = subtotal - discount;
+                const taxAmount = (taxable * tax) / 100;
+                return {
+                    ...item,
+                    rate: rate,
+                    total: taxable + taxAmount
+                };
+            }
+
+            const conversionRate = rateVal;
+            const converted = basePrice / conversionRate;
+            const qty = parseFloat(item.qty) || 0;
+            const rate = Number(converted.toFixed(2)) || 0;
+            const tax = parseFloat(item.tax) || 0;
+            const discount = parseFloat(item.discount) || 0;
+            const subtotal = qty * rate;
+            const taxable = subtotal - discount;
+            const taxAmount = (taxable * tax) / 100;
+
+            return {
+                ...item,
+                rate: rate,
+                total: taxable + taxAmount
+            };
+        }));
     };
 
     const formatDocCurrency = (amount, currencyCode) => {
@@ -1172,12 +1228,13 @@ const Invoice = () => {
                     const prod = prodId ? allProducts.find(p => p.id === prodId) : null;
                     if (prod) {
                         const newUom = allUoms.find(u => u.id === newUomId) || prod.uom || prod.salesUom || prod.purchaseUom;
-                        const basePrice = prod.salePrice || 0;
+                        const conversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
+                        const basePrice = prod.salePrice ? (prod.salePrice / conversionRate) : 0;
                         const multiplier = newUom?.uomType === 'Compound' ? parseFloat(newUom.conversionRate) || 1 : 1;
                         updatedItem = {
                             ...item,
                             uomId: newUomId,
-                            rate: basePrice * multiplier
+                            rate: Number((basePrice * multiplier).toFixed(2))
                         };
                     } else {
                         updatedItem = { ...item, uomId: newUomId };
@@ -2749,97 +2806,99 @@ const Invoice = () => {
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
-                                                                    {group.invoices.map(si => (
-                                                                        <tr key={`si-${si.id}-${si.type}`}>
-                                                                            <td>
-                                                                                <span style={{
-                                                                                    fontSize: '10px',
-                                                                                    padding: '2px 8px',
-                                                                                    borderRadius: '4px',
-                                                                                    background: si.type === 'POS_INVOICE' ? '#f0fdf4' : '#eff6ff',
-                                                                                    color: si.type === 'POS_INVOICE' ? '#16a34a' : '#2563eb',
-                                                                                    fontWeight: '800',
-                                                                                    border: `1px solid ${si.type === 'POS_INVOICE' ? '#bbf7d0' : '#bfdbfe'}`
-                                                                                }}>
-                                                                                    {si.type === 'POS_INVOICE' ? 'POS' : 'INVOICE'}
-                                                                                </span>
-                                                                            </td>
-                                                                            <td className="font-bold">{si.invoiceNumber}</td>
-                                                                            <td>{new Date(si.date).toLocaleDateString()}</td>
-                                                                            <td>
-                                                                                {formatDocCurrency(si.totalAmount, si.currency)}
-                                                                                {si.currency && si.currency !== (companySettings?.currency || 'USD') && (
-                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                                        ({formatDocCurrency(si.totalAmount * (si.exchangeRate || 1.0), companySettings?.currency || 'USD')})
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                            <td className="font-bold">
-                                                                                {formatDocCurrency(si.balanceAmount, si.currency)}
-                                                                                {si.currency && si.currency !== (companySettings?.currency || 'USD') && (
-                                                                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
-                                                                                        ({formatDocCurrency(si.balanceAmount * (si.exchangeRate || 1.0), companySettings?.currency || 'USD')})
-                                                                                    </div>
-                                                                                )}
-                                                                            </td>
-                                                                            <td>
-                                                                                <select
-                                                                                    value={si.manualStatus ? si.status : 'AUTO'}
-                                                                                    onChange={(e) => handleStatusChange(si.id, si.type === 'POS_INVOICE', e.target.value)}
-                                                                                    className="Invoice-invoice-status-pill"
-                                                                                    style={getStatusStyle(si.manualStatus ? si.status : 'AUTO')}
-                                                                                >
-                                                                                    <option value="AUTO">Auto ({si.status})</option>
-                                                                                    <option value="UNPAID">UNPAID</option>
-                                                                                    <option value="PARTIAL">PARTIAL</option>
-                                                                                    <option value="PAID">PAID</option>
-                                                                                    <option value="CANCELLED">CANCELLED</option>
-                                                                                </select>
-                                                                            </td>
-                                                                            <td className="text-right">
-                                                                                <div className="Invoice-invoice-action-buttons">
-                                                                                    <button className="Invoice-invoice-action-btn Invoice-view" onClick={() => handleView(si)}><Eye size={14} /></button>
-                                                                                    {si.type === 'POS_INVOICE' ? (
-                                                                                        <>
-                                                                                            {si.balanceAmount > 0 && hasPermission('create sales payment') && (
-                                                                                                <button
-                                                                                                    className="Invoice-invoice-action-btn Invoice-payment"
-                                                                                                    // onClick={(e) => handleCollectPaymentClick(si, e)}
-                                                                                                    onClick={() => navigate('/company/sales/payment', { state: { targetInvoiceId: si.id, invoiceType: 'POS_INVOICE', customerId: si.customerId } })}
-                                                                                                    title="Receive Payment"
-                                                                                                    style={{ color: '#10b981' }}
-                                                                                                >
-                                                                                                    <CreditCard size={14} />
-                                                                                                </button>
-                                                                                            )}
-                                                                                            {hasPermission('delete sales invoice') && (
-                                                                                                <button className="Invoice-invoice-action-btn Invoice-delete" onClick={() => handleDelete(si)}><Trash2 size={14} /></button>
-                                                                                            )}
-                                                                                        </>
-                                                                                    ) : (
-                                                                                        <>
-                                                                                            {si.balanceAmount > 0 && hasPermission('create sales payment') && (
-                                                                                                <button
-                                                                                                    className="Invoice-invoice-action-btn Invoice-payment"
-                                                                                                    onClick={() => navigate('/company/sales/payment', { state: { targetInvoiceId: si.id, customerId: si.customerId } })}
-                                                                                                    title="Receive Payment"
-                                                                                                    style={{ color: '#10b981' }}
-                                                                                                >
-                                                                                                    <CreditCard size={14} />
-                                                                                                </button>
-                                                                                            )}
-                                                                                            {hasPermission('edit sales invoice') && (
-                                                                                                <button className="Invoice-invoice-action-btn Invoice-edit" onClick={() => handleEdit(si)}><Pencil size={14} /></button>
-                                                                                            )}
-                                                                                            {hasPermission('delete sales invoice') && (
-                                                                                                <button className="Invoice-invoice-action-btn Invoice-delete" onClick={() => handleDelete(si)}><Trash2 size={14} /></button>
-                                                                                            )}
-                                                                                        </>
+                                                                    {group.invoices.map(si => {
+                                                                        const subRate = getSyncRate(si.currency || 'USD', companySettings?.currency || 'INR');
+                                                                        return (
+                                                                            <tr key={`si-${si.id}-${si.type}`}>
+                                                                                <td>
+                                                                                    <span style={{
+                                                                                        fontSize: '10px',
+                                                                                        padding: '2px 8px',
+                                                                                        borderRadius: '4px',
+                                                                                        background: si.type === 'POS_INVOICE' ? '#f0fdf4' : '#eff6ff',
+                                                                                        color: si.type === 'POS_INVOICE' ? '#16a34a' : '#2563eb',
+                                                                                        fontWeight: '800',
+                                                                                        border: `1px solid ${si.type === 'POS_INVOICE' ? '#bbf7d0' : '#bfdbfe'}`
+                                                                                    }}>
+                                                                                        {si.type === 'POS_INVOICE' ? 'POS' : 'INVOICE'}
+                                                                                    </span>
+                                                                                </td>
+                                                                                <td className="font-bold">{si.invoiceNumber}</td>
+                                                                                <td>{new Date(si.date).toLocaleDateString()}</td>
+                                                                                <td>
+                                                                                    {formatDocCurrency(si.totalAmount, si.currency)}
+                                                                                    {si.currency && si.currency !== (companySettings?.currency || 'INR') && (
+                                                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                            ({formatDocCurrency(si.totalAmount * subRate, companySettings?.currency || 'INR')})
+                                                                                        </div>
                                                                                     )}
-                                                                                </div>
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
+                                                                                </td>
+                                                                                <td className="font-bold">
+                                                                                    {formatDocCurrency(si.balanceAmount, si.currency)}
+                                                                                    {si.currency && si.currency !== (companySettings?.currency || 'INR') && (
+                                                                                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748b' }}>
+                                                                                            ({formatDocCurrency(si.balanceAmount * subRate, companySettings?.currency || 'INR')})
+                                                                                        </div>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td>
+                                                                                    <select
+                                                                                        value={si.manualStatus ? si.status : 'AUTO'}
+                                                                                        onChange={(e) => handleStatusChange(si.id, si.type === 'POS_INVOICE', e.target.value)}
+                                                                                        className="Invoice-invoice-status-pill"
+                                                                                        style={getStatusStyle(si.manualStatus ? si.status : 'AUTO')}
+                                                                                    >
+                                                                                        <option value="AUTO">Auto ({si.status})</option>
+                                                                                        <option value="UNPAID">UNPAID</option>
+                                                                                        <option value="PARTIAL">PARTIAL</option>
+                                                                                        <option value="PAID">PAID</option>
+                                                                                        <option value="CANCELLED">CANCELLED</option>
+                                                                                    </select>
+                                                                                </td>
+                                                                                <td className="text-right">
+                                                                                    <div className="Invoice-invoice-action-buttons">
+                                                                                        <button className="Invoice-invoice-action-btn Invoice-view" onClick={() => handleView(si)}><Eye size={14} /></button>
+                                                                                        {si.type === 'POS_INVOICE' ? (
+                                                                                            <>
+                                                                                                {si.balanceAmount > 0 && hasPermission('create sales payment') && (
+                                                                                                    <button
+                                                                                                        className="Invoice-invoice-action-btn Invoice-payment"
+                                                                                                        onClick={() => navigate('/company/sales/payment', { state: { targetInvoiceId: si.id, invoiceType: 'POS_INVOICE', customerId: si.customerId } })}
+                                                                                                        title="Receive Payment"
+                                                                                                        style={{ color: '#10b981' }}
+                                                                                                    >
+                                                                                                        <CreditCard size={14} />
+                                                                                                    </button>
+                                                                                                )}
+                                                                                                {hasPermission('delete sales invoice') && (
+                                                                                                    <button className="Invoice-invoice-action-btn Invoice-delete" onClick={() => handleDelete(si)}><Trash2 size={14} /></button>
+                                                                                                )}
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                {si.balanceAmount > 0 && hasPermission('create sales payment') && (
+                                                                                                    <button
+                                                                                                        className="Invoice-invoice-action-btn Invoice-payment"
+                                                                                                        onClick={() => navigate('/company/sales/payment', { state: { targetInvoiceId: si.id, customerId: si.customerId } })}
+                                                                                                        title="Receive Payment"
+                                                                                                        style={{ color: '#10b981' }}
+                                                                                                    >
+                                                                                                        <CreditCard size={14} />
+                                                                                                    </button>
+                                                                                                )}
+                                                                                                {hasPermission('edit sales invoice') && (
+                                                                                                    <button className="Invoice-invoice-action-btn Invoice-edit" onClick={() => handleEdit(si)}><Pencil size={14} /></button>
+                                                                                                )}
+                                                                                                {hasPermission('delete sales invoice') && (
+                                                                                                    <button className="Invoice-invoice-action-btn Invoice-delete" onClick={() => handleDelete(si)}><Trash2 size={14} /></button>
+                                                                                                )}
+                                                                                            </>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
                                                                     {group.returns.map(sr => (
                                                                         <tr key={`sr-${sr.id}`} style={{ background: '#fff1f2' }}>
                                                                             <td className="font-bold text-red-500">RETURN</td>
@@ -3318,11 +3377,13 @@ const Invoice = () => {
                                                                                 autoWarehouseId = String(p.stock[0].warehouseId);
                                                                             }
                                                                         }
+                                                                        const conversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
+                                                                        const convertedPrice = p.salePrice ? (p.salePrice / conversionRate) : 0;
                                                                         updateItem(item.id, {
                                                                             productId: pId,
                                                                             serviceId: '',
                                                                             uomId: p.salesUomId || p.uomId || '',
-                                                                            rate: p.salePrice || 0,
+                                                                            rate: Number(convertedPrice.toFixed(2)) || 0,
                                                                             tax: p.taxRate || 0,
                                                                             description: item.description || p.name,
                                                                             warehouseId: autoWarehouseId
@@ -3332,10 +3393,12 @@ const Invoice = () => {
                                                                     const sId = val.split('-')[1];
                                                                     const s = allServices.find(x => x.id === parseInt(sId));
                                                                     if (s) {
+                                                                        const conversionRate = getSyncRate(selectedCurrency, companySettings?.currency || 'INR') || 1.0;
+                                                                        const convertedPrice = s.price ? (s.price / conversionRate) : 0;
                                                                         updateItem(item.id, {
                                                                             serviceId: sId,
                                                                             productId: '',
-                                                                            rate: s.price || 0,
+                                                                            rate: Number(convertedPrice.toFixed(2)) || 0,
                                                                             tax: s.taxRate || 0,
                                                                             description: item.description || s.name
                                                                         });

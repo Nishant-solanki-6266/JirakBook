@@ -1,11 +1,12 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const numberingService = require('../services/numberingService');
+const { getConversionRate, getCompanyCurrency } = require('../utils/currencyConverter');
 
 // Create Sales Return
 const createReturn = async (req, res) => {
     try {
-        const { returnNumber, date, customerId, invoiceId, invoiceType, items, reason, manualVoucherNo, customFields } = req.body;
+        const { returnNumber, date, customerId, invoiceId, invoiceType, items, reason, manualVoucherNo, customFields, currency, exchangeRate } = req.body;
         const companyId = req.user.companyId;
 
         if (!returnNumber || !customerId || !items || items.length === 0) {
@@ -85,6 +86,29 @@ const createReturn = async (req, res) => {
             customFieldsObj.posInvoiceId = posInvoice.id;
         }
         const finalCustomFields = JSON.stringify(customFieldsObj);
+
+        // --- Currency Setup ---
+        // If currency/exchangeRate not provided by frontend, try to get them from the linked invoice
+        let docCurrency = currency || null;
+        let docExchangeRate = parseFloat(exchangeRate) || null;
+
+        if (invoiceId && !isPosInvoice && (!docCurrency || !docExchangeRate)) {
+            const srcInvoice = await prisma.invoice.findUnique({
+                where: { id: parseInt(invoiceId) },
+                select: { currency: true, exchangeRate: true }
+            });
+            if (srcInvoice) {
+                docCurrency = docCurrency || srcInvoice.currency || 'USD';
+                docExchangeRate = docExchangeRate || parseFloat(srcInvoice.exchangeRate) || 1.0;
+            }
+        }
+        if (!docCurrency) {
+            docCurrency = await getCompanyCurrency(companyId);
+        }
+        if (!docExchangeRate) {
+            docExchangeRate = await getConversionRate(docCurrency, await getCompanyCurrency(companyId));
+        }
+        const exRate = docExchangeRate || 1.0;
 
         const result = await prisma.$transaction(async (tx) => {
             console.log("[createReturn] tx: Resolving returnLedger...");
@@ -221,24 +245,30 @@ const createReturn = async (req, res) => {
 
             const creditTargetLedgerId = isInvoicePaid && cashLedger ? cashLedger.id : customer.ledgerId;
 
+            // Apply exchange rate to convert amounts to base currency
+            const ledgerReturnedSubtotal = returnedSubtotal * exRate;
+            const ledgerTotalAmount = totalAmount * exRate;
+            const ledgerReturnedTax = returnedTax * exRate;
+            const ledgerReturnedDiscount = returnedDiscount * exRate;
+
             console.log("[createReturn] tx: Updating accounting ledger balances...");
             // DR Sales Return (gross portion)
             await tx.ledger.update({
                 where: { id: returnLedger.id },
-                data: { currentBalance: { increment: returnedSubtotal } }
+                data: { currentBalance: { increment: ledgerReturnedSubtotal } }
             });
 
             // CR Customer/Cash (net portion: subtotal + tax - discount)
             await tx.ledger.update({
                 where: { id: creditTargetLedgerId },
-                data: { currentBalance: { decrement: totalAmount } }
+                data: { currentBalance: { decrement: ledgerTotalAmount } }
             });
 
             // DR Tax Payable (VAT)
             if (returnedTax > 0 && taxLedger) {
                 await tx.ledger.update({
                     where: { id: taxLedger.id },
-                    data: { currentBalance: { decrement: returnedTax } }
+                    data: { currentBalance: { decrement: ledgerReturnedTax } }
                 });
             }
 
@@ -246,7 +276,7 @@ const createReturn = async (req, res) => {
             if (returnedDiscount > 0 && discountAllowedLedger) {
                 await tx.ledger.update({
                     where: { id: discountAllowedLedger.id },
-                    data: { currentBalance: { decrement: returnedDiscount } }
+                    data: { currentBalance: { decrement: ledgerReturnedDiscount } }
                 });
             }
 
@@ -258,7 +288,7 @@ const createReturn = async (req, res) => {
                     voucherNumber: autoVoucherNo,
                     debitLedgerId: returnLedger.id,
                     creditLedgerId: creditTargetLedgerId,
-                    amount: returnedSubtotal,
+                    amount: ledgerReturnedSubtotal,
                     narration: `Sales Return (Revenue portion) from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                     companyId: parseInt(companyId),
                     invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
@@ -275,7 +305,7 @@ const createReturn = async (req, res) => {
                         voucherNumber: autoVoucherNo,
                         debitLedgerId: taxLedger.id,
                         creditLedgerId: creditTargetLedgerId,
-                        amount: returnedTax,
+                        amount: ledgerReturnedTax,
                         narration: `Sales Return Tax Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
                         invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
@@ -293,7 +323,7 @@ const createReturn = async (req, res) => {
                         voucherNumber: autoVoucherNo,
                         debitLedgerId: creditTargetLedgerId,
                         creditLedgerId: discountAllowedLedger.id,
-                        amount: returnedDiscount,
+                        amount: ledgerReturnedDiscount,
                         narration: `Sales Return Discount Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
                         invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
@@ -320,6 +350,7 @@ const createReturn = async (req, res) => {
 
                 const finalDebitLedger = inventoryLedger || purchaseLedger;
                 if (finalDebitLedger && cogsLedger) {
+                    const ledgerCOGS = totalReturnCOGS * exRate;
 
                     await tx.transaction.create({
                         data: {
@@ -328,14 +359,14 @@ const createReturn = async (req, res) => {
                             voucherNumber: `COGS-REV-${autoVoucherNo}`,
                             debitLedgerId: finalDebitLedger.id,
                             creditLedgerId: cogsLedger.id,
-                            amount: totalReturnCOGS,
+                            amount: ledgerCOGS,
                             narration: `COGS Reversal for Return: ${returnNumber}`,
                             companyId: parseInt(companyId),
                         }
                     });
 
-                    await tx.ledger.update({ where: { id: finalDebitLedger.id }, data: { currentBalance: { increment: totalReturnCOGS } } });
-                    await tx.ledger.update({ where: { id: cogsLedger.id }, data: { currentBalance: { decrement: totalReturnCOGS } } });
+                    await tx.ledger.update({ where: { id: finalDebitLedger.id }, data: { currentBalance: { increment: ledgerCOGS } } });
+                    await tx.ledger.update({ where: { id: cogsLedger.id }, data: { currentBalance: { decrement: ledgerCOGS } } });
                 }
             }
 
@@ -359,7 +390,7 @@ const getReturns = async (req, res) => {
             where: { companyId: parseInt(companyId) },
             include: {
                 customer: { select: { name: true } },
-                invoice: { select: { invoiceNumber: true } },
+                invoice: { select: { invoiceNumber: true, currency: true, exchangeRate: true } },
                 salesreturnitem: {
                     include: {
                         product: true,
@@ -417,7 +448,7 @@ const getReturnById = async (req, res) => {
             },
             include: {
                 customer: true,
-                invoice: { select: { invoiceNumber: true } },
+                invoice: { select: { invoiceNumber: true, currency: true, exchangeRate: true } },
                 salesreturnitem: {
                     include: {
                         product: true,
@@ -465,7 +496,7 @@ const getReturnById = async (req, res) => {
 const updateReturn = async (req, res) => {
     try {
         const { id } = req.params;
-        const { returnNumber, date, customerId, invoiceId, items, reason, manualVoucherNo, customFields } = req.body;
+        const { returnNumber, date, customerId, invoiceId, items, reason, manualVoucherNo, customFields, currency, exchangeRate } = req.body;
         const companyId = req.user.companyId;
 
         if (!returnNumber || !customerId || !items || items.length === 0) {
@@ -562,6 +593,33 @@ const updateReturn = async (req, res) => {
             delete customFieldsObj.posInvoiceId;
         }
         const finalCustomFields = JSON.stringify(customFieldsObj);
+
+        // --- Currency Setup ---
+        let docCurrency = currency || null;
+        let docExchangeRate = parseFloat(exchangeRate) || null;
+        if (invoiceId && !isPosInvoice && (!docCurrency || !docExchangeRate)) {
+            const srcInvoice = await prisma.invoice.findUnique({
+                where: { id: parseInt(invoiceId) },
+                select: { currency: true, exchangeRate: true }
+            });
+            if (srcInvoice) {
+                docCurrency = docCurrency || srcInvoice.currency || 'USD';
+                docExchangeRate = docExchangeRate || parseFloat(srcInvoice.exchangeRate) || 1.0;
+            }
+        }
+        if (!docExchangeRate) {
+            // Fallback: try fetching from the existing return's invoice
+            if (existing.invoiceId && !isPosInvoice) {
+                const existingInvoice = await prisma.invoice.findUnique({
+                    where: { id: existing.invoiceId },
+                    select: { exchangeRate: true }
+                });
+                docExchangeRate = existingInvoice ? (parseFloat(existingInvoice.exchangeRate) || 1.0) : 1.0;
+            } else {
+                docExchangeRate = 1.0;
+            }
+        }
+        const exRate = docExchangeRate || 1.0;
 
         const result = await prisma.$transaction(async (tx) => {
             const resolveLedger = async (txOrPrisma, namePattern, type) => {
@@ -816,12 +874,18 @@ const updateReturn = async (req, res) => {
                 }
             }
 
+            // Apply exchange rate to convert amounts to base currency
+            const ledgerReturnedSubtotal = returnedSubtotal * exRate;
+            const ledgerTotalAmount = totalAmount * exRate;
+            const ledgerReturnedTax = returnedTax * exRate;
+            const ledgerReturnedDiscount = returnedDiscount * exRate;
+
             // 7. Apply New Accounting Entry (Main)
             console.log("[updateReturn] tx: Applying detailed sales return accounting entries...");
             // DR Sales Return (gross portion)
             await tx.ledger.update({
                 where: { id: returnLedger.id },
-                data: { currentBalance: { increment: returnedSubtotal } }
+                data: { currentBalance: { increment: ledgerReturnedSubtotal } }
             });
 
             // Determine if the new/updated invoice is paid
@@ -843,14 +907,14 @@ const updateReturn = async (req, res) => {
             // CR Customer/Cash (net portion: subtotal + tax - discount)
             await tx.ledger.update({
                 where: { id: newCreditTargetLedgerId },
-                data: { currentBalance: { decrement: totalAmount } }
+                data: { currentBalance: { decrement: ledgerTotalAmount } }
             });
 
             // DR Tax Payable (VAT)
             if (returnedTax > 0 && taxLedger) {
                 await tx.ledger.update({
                     where: { id: taxLedger.id },
-                    data: { currentBalance: { decrement: returnedTax } }
+                    data: { currentBalance: { decrement: ledgerReturnedTax } }
                 });
             }
 
@@ -858,7 +922,7 @@ const updateReturn = async (req, res) => {
             if (returnedDiscount > 0 && discountAllowedLedger) {
                 await tx.ledger.update({
                     where: { id: discountAllowedLedger.id },
-                    data: { currentBalance: { decrement: returnedDiscount } }
+                    data: { currentBalance: { decrement: ledgerReturnedDiscount } }
                 });
             }
 
@@ -870,7 +934,7 @@ const updateReturn = async (req, res) => {
                     voucherNumber: existing.autoVoucherNo,
                     debitLedgerId: returnLedger.id,
                     creditLedgerId: newCreditTargetLedgerId,
-                    amount: returnedSubtotal,
+                    amount: ledgerReturnedSubtotal,
                     narration: `Sales Return (Revenue portion) from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                     companyId: parseInt(companyId),
                     invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
@@ -887,7 +951,7 @@ const updateReturn = async (req, res) => {
                         voucherNumber: existing.autoVoucherNo,
                         debitLedgerId: taxLedger.id,
                         creditLedgerId: newCreditTargetLedgerId,
-                        amount: returnedTax,
+                        amount: ledgerReturnedTax,
                         narration: `Sales Return Tax Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
                         invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),
@@ -905,7 +969,7 @@ const updateReturn = async (req, res) => {
                         voucherNumber: existing.autoVoucherNo,
                         debitLedgerId: newCreditTargetLedgerId,
                         creditLedgerId: discountAllowedLedger.id,
-                        amount: returnedDiscount,
+                        amount: ledgerReturnedDiscount,
                         narration: `Sales Return Discount Reversal from ${customer.name}${invoiceId ? ' for Invoice ID: ' + invoiceId : ''}`,
                         companyId: parseInt(companyId),
                         invoiceId: isPosInvoice ? null : (invoiceId ? parseInt(invoiceId) : null),

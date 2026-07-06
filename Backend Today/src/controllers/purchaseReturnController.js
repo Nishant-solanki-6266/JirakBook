@@ -1,16 +1,39 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const numberingService = require('../services/numberingService');
+const { getConversionRate, getCompanyCurrency } = require('../utils/currencyConverter');
 
 // Create Purchase Return (Stock OUT + Ledger Debit Vendor)
 const createReturn = async (req, res) => {
     try {
-        const { returnNumber, date, vendorId, purchaseBillId, items, reason, totalAmount, customFields } = req.body;
+        const { returnNumber, date, vendorId, purchaseBillId, items, reason, totalAmount, customFields, currency, exchangeRate } = req.body;
         const companyId = req.user?.companyId || req.query.companyId || req.body.companyId;
 
         if (!returnNumber || !vendorId || !items || items.length === 0) {
             return res.status(400).json({ success: false, message: 'Please provide all required fields' });
         }
+
+        // --- Currency Setup ---
+        let docCurrency = currency || null;
+        let docExchangeRate = parseFloat(exchangeRate) || null;
+
+        if (purchaseBillId && (!docCurrency || !docExchangeRate)) {
+            const srcBill = await prisma.purchasebill.findUnique({
+                where: { id: parseInt(purchaseBillId) },
+                select: { currency: true, exchangeRate: true }
+            });
+            if (srcBill) {
+                docCurrency = docCurrency || srcBill.currency || 'USD';
+                docExchangeRate = docExchangeRate || parseFloat(srcBill.exchangeRate) || 1.0;
+            }
+        }
+        if (!docCurrency) {
+            docCurrency = await getCompanyCurrency(companyId);
+        }
+        if (!docExchangeRate) {
+            docExchangeRate = await getConversionRate(docCurrency, await getCompanyCurrency(companyId));
+        }
+        const exRate = docExchangeRate || 1.0;
 
         const returnItems = items.map(item => ({
             productId: parseInt(item.productId),
@@ -112,10 +135,11 @@ const createReturn = async (req, res) => {
             });
 
             // Debit Vendor/Cash, Credit Purchases/Inventory
+            const ledgerTotalAmount = parseFloat(totalAmount) * exRate;
             await tx.transaction.create({
                 data: {
                     date: new Date(date),
-                    amount: parseFloat(totalAmount),
+                    amount: ledgerTotalAmount,
                     debitLedgerId: debitLedgerId,
                     creditLedgerId: creditLedgerId,
                     voucherType: 'PURCHASE_RETURN',
@@ -130,7 +154,7 @@ const createReturn = async (req, res) => {
             if (!isBillPaid) {
                 await tx.vendor.update({
                     where: { id: parseInt(vendorId) },
-                    data: { accountBalance: { decrement: parseFloat(totalAmount) } }
+                    data: { accountBalance: { decrement: ledgerTotalAmount } }
                 });
             }
 
@@ -138,17 +162,17 @@ const createReturn = async (req, res) => {
             if (isBillPaid) {
                 await tx.ledger.update({
                     where: { id: debitLedgerId },
-                    data: { currentBalance: { increment: parseFloat(totalAmount) } } // Cash (Asset) increases
+                    data: { currentBalance: { increment: ledgerTotalAmount } } // Cash (Asset) increases
                 });
             } else {
                 await tx.ledger.update({
                     where: { id: debitLedgerId },
-                    data: { currentBalance: { decrement: parseFloat(totalAmount) } } // Vendor (Liability) decreases
+                    data: { currentBalance: { decrement: ledgerTotalAmount } } // Vendor (Liability) decreases
                 });
             }
             await tx.ledger.update({
                 where: { id: creditLedgerId },
-                data: { currentBalance: { decrement: parseFloat(totalAmount) } } // Purchase (Expense) decreases
+                data: { currentBalance: { decrement: ledgerTotalAmount } } // Purchase (Expense) decreases
             });
 
             return purchaseReturn;
@@ -234,8 +258,19 @@ const getReturnById = async (req, res) => {
 const updateReturn = async (req, res) => {
     try {
         const { id } = req.params;
-        const { returnNumber, date, vendorId, purchaseBillId, items, reason, totalAmount, customFields } = req.body;
+        const { returnNumber, date, vendorId, purchaseBillId, items, reason, totalAmount, customFields, currency, exchangeRate } = req.body;
         const companyId = req.user?.companyId || req.query.companyId || req.body.companyId;
+
+        // --- Currency Setup ---
+        let docExchangeRate = parseFloat(exchangeRate) || null;
+        if (purchaseBillId && !docExchangeRate) {
+            const srcBill = await prisma.purchasebill.findUnique({
+                where: { id: parseInt(purchaseBillId) },
+                select: { exchangeRate: true }
+            });
+            docExchangeRate = srcBill ? (parseFloat(srcBill.exchangeRate) || 1.0) : 1.0;
+        }
+        const exRate = docExchangeRate || 1.0;
 
         const existingReturn = await prisma.purchasereturn.findFirst({
             where: { id: parseInt(id), companyId: parseInt(companyId) },
@@ -453,11 +488,13 @@ const updateReturn = async (req, res) => {
 
             const finalAmount = totalAmount ? parseFloat(totalAmount) : parseFloat(existingReturn.totalAmount);
 
+            const ledgerFinalAmount = finalAmount * exRate;
+
             // Debit Vendor/Cash, Credit Purchases/Inventory
             await tx.transaction.create({
                 data: {
                     date: new Date(date),
-                    amount: finalAmount,
+                    amount: ledgerFinalAmount,
                     debitLedgerId: debitLedgerId,
                     creditLedgerId: creditLedgerId,
                     voucherType: 'PURCHASE_RETURN',
@@ -472,7 +509,7 @@ const updateReturn = async (req, res) => {
             if (!isNewBillPaid) {
                 await tx.vendor.update({
                     where: { id: targetVendorId },
-                    data: { accountBalance: { decrement: finalAmount } }
+                    data: { accountBalance: { decrement: ledgerFinalAmount } }
                 });
             }
 
@@ -480,17 +517,17 @@ const updateReturn = async (req, res) => {
             if (isNewBillPaid) {
                 await tx.ledger.update({
                     where: { id: debitLedgerId },
-                    data: { currentBalance: { increment: finalAmount } } // Cash (Asset) increases
+                    data: { currentBalance: { increment: ledgerFinalAmount } } // Cash (Asset) increases
                 });
             } else {
                 await tx.ledger.update({
                     where: { id: debitLedgerId },
-                    data: { currentBalance: { decrement: finalAmount } } // Vendor (Liability) decreases
+                    data: { currentBalance: { decrement: ledgerFinalAmount } } // Vendor (Liability) decreases
                 });
             }
             await tx.ledger.update({
                 where: { id: creditLedgerId },
-                data: { currentBalance: { decrement: finalAmount } }
+                data: { currentBalance: { decrement: ledgerFinalAmount } }
             });
 
             return updatedReturn;

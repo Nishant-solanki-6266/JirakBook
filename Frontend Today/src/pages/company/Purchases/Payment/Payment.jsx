@@ -28,9 +28,27 @@ const Payment = () => {
     const sourceData = location.state?.sourceData;
     const targetPaymentId = location.state?.targetPaymentId;
 
-    const { companySettings, formatCurrency, getReceiptPaymentLabel, getReceiptPaymentHeader, getDocumentTitle } = useContext(CompanyContext);
+    const { companySettings, formatCurrency, getSyncRate, getReceiptPaymentLabel, getReceiptPaymentHeader, getDocumentTitle } = useContext(CompanyContext);
 
-    // ── List state ──────────────────────────────────────────────
+    const formatDocCurrency = (amount, currencyCode) => {
+        const docCurrency = currencyCode || companySettings?.currency || 'INR';
+        const localeMap = {
+            'INR': 'en-IN', 'AED': 'ar-AE', 'SAR': 'ar-SA', 'EUR': 'de-DE',
+            'GBP': 'en-GB', 'JPY': 'ja-JP', 'CNY': 'zh-CN', 'RUB': 'ru-RU',
+            'BRL': 'pt-BR', 'CAD': 'en-CA', 'AUD': 'en-AU', 'PKR': 'en-PK', 'BDT': 'en-BD', 'USD': 'en-US'
+        };
+        const locale = localeMap[docCurrency] || 'en-US';
+        try {
+            return new Intl.NumberFormat(locale, {
+                style: 'currency', currency: docCurrency,
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+            }).format(amount || 0);
+        } catch (e) {
+            return `${docCurrency} ${(amount || 0).toFixed(2)}`;
+        }
+    };
+
+    // â”€â”€ List state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [payments, setPayments] = useState([]);
     const [customFieldValues, setCustomFieldValues] = useState({});
 
@@ -55,12 +73,12 @@ const Payment = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    // ── Dropdown data ────────────────────────────────────────────
+    // â”€â”€ Dropdown data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [vendors, setVendors] = useState([]);
     const [allBills, setAllBills] = useState([]);   // all unpaid bills
     const [accounts, setAccounts] = useState([]);   // all ledger accounts
 
-    // ── Modals ───────────────────────────────────────────────────
+    // â”€â”€ Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [showAddModal, setShowAddModal] = useState(false);
     const [showVendorSelect, setShowVendorSelect] = useState(false);
     const [showBillSelect, setShowBillSelect] = useState(false);
@@ -70,16 +88,16 @@ const Payment = () => {
     const [isViewMode, setIsViewMode] = useState(false);
     const [viewPayment, setViewPayment] = useState(null);
 
-    // ── Vendor / Bill selection searches ─────────────────────────
+    // â”€â”€ Vendor / Bill selection searches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [vendorSearch, setVendorSearch] = useState('');
     const [billSearch, setBillSearch] = useState('');
 
-    // ── Company details ──────────────────────────────────────────
+    // â”€â”€ Company details â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [companyDetails, setCompanyDetails] = useState({
         name: 'My Company', address: '', email: '', phone: '', logo: null
     });
 
-    // ── Form state ───────────────────────────────────────────────
+    // â”€â”€ Form state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const [selectedVendorId, setSelectedVendorId] = useState('');
     const [selectedVendorName, setSelectedVendorName] = useState('');
     const [selectedBill, setSelectedBill] = useState(null);
@@ -127,7 +145,7 @@ const Payment = () => {
         return due;
     }, [selectedBill, editingId, payments]);
 
-    // ── Initial load ─────────────────────────────────────────────
+    // â”€â”€ Initial load â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     useEffect(() => {
         fetchInitialData();
         fetchPayments();
@@ -242,7 +260,7 @@ const Payment = () => {
         }
     };
 
-    // ── Filtered / derived data ──────────────────────────────────
+    // â”€â”€ Filtered / derived data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const filteredPayments = useMemo(() => {
         return payments.filter(p => {
             const q = searchTerm.toLowerCase();
@@ -301,7 +319,7 @@ const Payment = () => {
         }, {});
     }, [accounts]);
 
-    // ── Handlers ─────────────────────────────────────────────────
+    // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const resetForm = () => {
         setEditingId(null);
         setSelectedVendorId('');
@@ -523,7 +541,7 @@ const Payment = () => {
     return (
         <div className="PurchasePayment-page">
 
-            {/* ── Page Header ── */}
+            {/* â”€â”€ Page Header â”€â”€ */}
             <div className="PurchasePayment-header">
                 <div>
                     <h1 className="PurchasePayment-title">Purchase Payments</h1>
@@ -536,7 +554,7 @@ const Payment = () => {
                 )}
             </div>
 
-            {/* ── Process Tracker ── */}
+            {/* â”€â”€ Process Tracker â”€â”€ */}
             <div className="PurchasePayment-tracker-card">
                 <div className="PurchasePayment-tracker-wrapper">
                     {purchaseProcess.map((step, index) => (
@@ -559,7 +577,7 @@ const Payment = () => {
                 </div>
             </div>
 
-            {/* ── Table Card ── */}
+            {/* â”€â”€ Table Card â”€â”€ */}
             <div className="PurchasePayment-table-card">
 
                 {/* Search + Date Filters */}
@@ -568,7 +586,7 @@ const Payment = () => {
                         <Search size={18} className="SalesPayment-search-icon" />
                         <input
                             type="text"
-                            placeholder="Search by payment no, vendor, bill…"
+                            placeholder="Search by payment no, vendor, bill.."
                             className="SalesPayment-search-input"
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
@@ -648,9 +666,9 @@ const Payment = () => {
                 </div>
             </div>
 
-            {/* ══════════════════════════════════════
+            {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
                 ADD / EDIT MODAL
-            ══════════════════════════════════════ */}
+            â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
             {showAddModal && (
                 <div className="PurchasePayment-modal-overlay">
                     <div className="PurchasePayment-modal-container">
@@ -669,7 +687,7 @@ const Payment = () => {
                         {/* Body */}
                         <div className="PurchasePayment-modal-body">
 
-                            {/* ── STEP 1: Vendor Selection ── */}
+                            {/* â”€â”€ STEP 1: Vendor Selection â”€â”€ */}
                             {showVendorSelect && (
                                 <div className="SalesPayment-selection-container">
                                     <div className="SalesPayment-modal-section-header">
@@ -678,7 +696,7 @@ const Payment = () => {
                                             <Search size={14} />
                                             <input
                                                 type="text"
-                                                placeholder="Search vendor…"
+                                                placeholder="Search vendor.."
                                                 value={vendorSearch}
                                                 onChange={e => setVendorSearch(e.target.value)}
                                                 autoFocus
@@ -702,7 +720,7 @@ const Payment = () => {
                                 </div>
                             )}
 
-                            {/* ── STEP 2: Bill Selection ── */}
+                            {/* â”€â”€ STEP 2: Bill Selection â”€â”€ */}
                             {showBillSelect && (
                                 <div className="SalesPayment-selection-container">
                                     <div className="SalesPayment-modal-section-header">
@@ -714,7 +732,7 @@ const Payment = () => {
                                                 <Search size={14} />
                                                 <input
                                                     type="text"
-                                                    placeholder="Search bill no…"
+                                                    placeholder="Search bill no.."
                                                     value={billSearch}
                                                     onChange={e => setBillSearch(e.target.value)}
                                                     autoFocus
@@ -750,7 +768,7 @@ const Payment = () => {
                                 </div>
                             )}
 
-                            {/* ── FORM (after vendor/bill chosen or editing) ── */}
+                            {/* â”€â”€ FORM (after vendor/bill chosen or editing) â”€â”€ */}
                             {!showVendorSelect && !showBillSelect && (
                                 <div className="PurchasePayment-form-body">
 
@@ -766,7 +784,7 @@ const Payment = () => {
                                             <p className="SalesPayment-company-address">{companyDetails.address}</p>
                                             <div className="SalesPayment-company-contact">
                                                 <span>{companyDetails.email}</span>
-                                                {companyDetails.email && companyDetails.phone && <span className="SalesPayment-contact-separator">•</span>}
+                                                {companyDetails.email && companyDetails.phone && <span className="SalesPayment-contact-separator"></span>}
                                                 <span>{companyDetails.phone}</span>
                                             </div>
                                         </div>
@@ -801,7 +819,7 @@ const Payment = () => {
                                                 <h3>{selectedVendorObj.name}</h3>
                                                 <div className="PurchasePayment-vendor-meta">
                                                     <span>{selectedVendorObj.billingAddress || 'No address'}</span>
-                                                    <span>{selectedVendorObj.email} {selectedVendorObj.phone ? '• ' + selectedVendorObj.phone : ''}</span>
+                                                    <span>{selectedVendorObj.email} {selectedVendorObj.phone ? '  ' + selectedVendorObj.phone : ''}</span>
                                                     <div className="mt-2" style={{ color: '#1e293b', fontWeight: '700' }}>
                                                         Vendor Balance: {formatCurrency(selectedVendorObj.ledger?.currentBalance || 0)}
                                                     </div>
@@ -819,7 +837,7 @@ const Payment = () => {
                                         </div>
                                     )}
 
-                                    {/* ── Form Grid ── */}
+                                    {/* â”€â”€ Form Grid â”€â”€ */}
                                     <div className="PurchasePayment-form-grid">
 
                                         <div className="PurchasePayment-form-group">
@@ -858,7 +876,7 @@ const Payment = () => {
                                             </select>
                                         </div> */}
 
-                                        {/* Credit To Account — all ledgers grouped */}
+                                        {/* Credit To Account â€” all ledgers grouped */}
                                         <div className="PurchasePayment-form-group">
                                             <label className="PurchasePayment-label">Credit To Account</label>
                                             <select
@@ -866,7 +884,7 @@ const Payment = () => {
                                                 value={accountId}
                                                 onChange={e => setAccountId(e.target.value)}
                                             >
-                                                <option value="">Select Account…</option>
+                                                <option value="">Select Account..</option>
                                                 {Object.entries(groupedAccounts).sort().map(([groupName, groupLedgers]) => (
                                                     <optgroup key={groupName} label={groupName}>
                                                         {groupLedgers.map(acc => (
@@ -901,13 +919,32 @@ const Payment = () => {
                                         </div>
 
                                         <div className="PurchasePayment-form-group">
-                                            <label className="PurchasePayment-label">Amount Paid</label>
-                                            <input
-                                                type="number"
-                                                className="PurchasePayment-input font-bold text-lg"
-                                                value={amount}
-                                                onChange={e => setAmount(e.target.value)}
-                                            />
+                                            {(() => {
+                                                const billCurr = selectedBill?.currency || companySettings?.currency || 'INR';
+                                                const baseCurr = companySettings?.currency || 'INR';
+                                                const isForeign = billCurr !== baseCurr;
+                                                const liveRate = getSyncRate(billCurr, baseCurr) || 1.0;
+                                                return (
+                                                    <>
+                                                        <label className="PurchasePayment-label">
+                                                            Amount Paid ({billCurr})
+                                                            {isForeign && (
+                                                                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                                    ≈ {formatCurrency((parseFloat(amount) || 0) * liveRate)}
+                                                                </span>
+                                                            )}
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            className="PurchasePayment-input font-bold text-lg"
+                                                            value={amount}
+                                                            onChange={e => setAmount(e.target.value)}
+                                                            step="0.000001"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="PurchasePayment-form-group">
@@ -935,7 +972,7 @@ const Payment = () => {
                                                 value={discountLedgerId}
                                                 onChange={e => setDiscountLedgerId(e.target.value)}
                                             >
-                                                <option value="">Select Account…</option>
+                                                <option value="">Select Account..</option>
                                                 {discountLedgers.map(acc => (
                                                     <option key={acc.id} value={acc.id}>
                                                         {acc.name}
@@ -991,7 +1028,7 @@ const Payment = () => {
                                             <label className="PurchasePayment-label">Notes</label>
                                             <textarea
                                                 className="PurchasePayment-textarea"
-                                                placeholder="Add internal notes or remarks…"
+                                                placeholder="Add internal notes or remarks.."
                                                 value={notes}
                                                 onChange={e => setNotes(e.target.value)}
                                             />
@@ -1016,12 +1053,30 @@ const Payment = () => {
                                                             {vendorBills.map(bill => {
                                                                 const maxDue = getBillAvailableBalance(bill.id, bill.balanceAmount);
                                                                 const allocatedVal = allocations[bill.id] !== undefined ? allocations[bill.id] : '';
+                                                                const billCurr = bill.currency || companySettings?.currency || 'INR';
+                                                                const baseCurr = companySettings?.currency || 'INR';
+                                                                const isForeign = billCurr !== baseCurr;
+                                                                const liveRate = getSyncRate(billCurr, baseCurr) || 1.0;
                                                                 return (
                                                                     <tr key={bill.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                                         <td style={{ padding: '12px 16px', fontWeight: '500', color: '#1e293b' }}>{bill.billNumber}</td>
                                                                         <td style={{ padding: '12px 16px', color: '#64748b' }}>{new Date(bill.date).toLocaleDateString()}</td>
-                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', color: '#1e293b' }}>{formatCurrency(bill.totalAmount)}</td>
-                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: '#d97706' }}>{formatCurrency(maxDue)}</td>
+                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', color: '#1e293b' }}>
+                                                                            {isForeign ? (
+                                                                                <>
+                                                                                    <div style={{ fontWeight: '600' }}>{formatDocCurrency(bill.totalAmount, billCurr)}</div>
+                                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(bill.totalAmount * liveRate)})</div>
+                                                                                </>
+                                                                            ) : formatCurrency(bill.totalAmount)}
+                                                                        </td>
+                                                                        <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', color: '#d97706' }}>
+                                                                            {isForeign ? (
+                                                                                <>
+                                                                                    <div>{formatDocCurrency(maxDue, billCurr)}</div>
+                                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(maxDue * liveRate)})</div>
+                                                                                </>
+                                                                            ) : formatCurrency(maxDue)}
+                                                                        </td>
                                                                         <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                                                                             <input
                                                                                 type="number"
@@ -1038,6 +1093,11 @@ const Payment = () => {
                                                                                     handleAllocationChange(bill.id, val === '' ? '' : capped);
                                                                                 }}
                                                                             />
+                                                                            {isForeign && parseFloat(allocatedVal) > 0 && (
+                                                                                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                                                                                    ≈ {formatCurrency(parseFloat(allocatedVal) * liveRate)}
+                                                                                </div>
+                                                                            )}
                                                                         </td>
                                                                     </tr>
                                                                 );
@@ -1052,27 +1112,42 @@ const Payment = () => {
                                             )}
 
                                             {/* Allocation Summary Info */}
-                                            <div className="SalesPayment-allocation-summary" style={{ marginTop: '16px', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
-                                                <div>
-                                                    <span style={{ color: '#64748b', marginRight: '8px' }}>Total Paid:</span>
-                                                    <span style={{ fontWeight: '700', color: '#1e293b' }}>{formatCurrency(amount || 0)}</span>
-                                                </div>
-                                                <div>
-                                                    <span style={{ color: '#64748b', marginRight: '8px' }}>Total Allocated:</span>
-                                                    <span style={{ fontWeight: '700', color: '#2563eb' }}>{formatCurrency(totalAllocated)}</span>
-                                                </div>
-                                                <div>
-                                                    <span style={{ color: '#64748b', marginRight: '8px' }}>Unallocated (Advance):</span>
-                                                    <span style={{ fontWeight: '700', color: remainingAmount > 0.01 ? '#16a34a' : '#64748b' }}>
-                                                        {formatCurrency(remainingAmount)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            {totalAllocated > (parseFloat(amount || 0) + parseFloat(discountAmount || 0)) && (
-                                                <div style={{ marginTop: '12px', padding: '12px', borderRadius: '6px', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: '0.875rem', fontWeight: '500' }}>
-                                                    ⚠️ Total allocated amount ({formatCurrency(totalAllocated)}) cannot exceed the sum of paid amount and discount ({formatCurrency(parseFloat(amount || 0) + parseFloat(discountAmount || 0))}). Please adjust allocations or increase the paid amount.
-                                                </div>
-                                            )}
+                                            {(() => {
+                                                const billCurr = selectedBill?.currency || companySettings?.currency || 'INR';
+                                                const baseCurr = companySettings?.currency || 'INR';
+                                                const isForeign = billCurr !== baseCurr;
+                                                const liveRate = getSyncRate(billCurr, baseCurr) || 1.0;
+                                                const totalPaid = parseFloat(amount || 0);
+                                                const totalLimit = totalPaid + parseFloat(discountAmount || 0);
+                                                return (
+                                                    <>
+                                                        <div className="SalesPayment-allocation-summary" style={{ marginTop: '16px', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem', flexWrap: 'wrap', gap: '8px' }}>
+                                                            <div>
+                                                                <span style={{ color: '#64748b', marginRight: '8px' }}>Total Paid:</span>
+                                                                <span style={{ fontWeight: '700', color: '#1e293b' }}>{formatDocCurrency(totalPaid, billCurr)}</span>
+                                                                {isForeign && <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '4px' }}>({formatCurrency(totalPaid * liveRate)})</span>}
+                                                            </div>
+                                                            <div>
+                                                                <span style={{ color: '#64748b', marginRight: '8px' }}>Total Allocated:</span>
+                                                                <span style={{ fontWeight: '700', color: '#2563eb' }}>{formatDocCurrency(totalAllocated, billCurr)}</span>
+                                                                {isForeign && <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '4px' }}>({formatCurrency(totalAllocated * liveRate)})</span>}
+                                                            </div>
+                                                            <div>
+                                                                <span style={{ color: '#64748b', marginRight: '8px' }}>Unallocated (Advance):</span>
+                                                                <span style={{ fontWeight: '700', color: remainingAmount > 0.01 ? '#16a34a' : '#64748b' }}>
+                                                                    {formatDocCurrency(remainingAmount, billCurr)}
+                                                                    {isForeign && <span style={{ fontSize: '0.75rem', fontWeight: 'normal', marginLeft: '4px' }}>({formatCurrency(remainingAmount * liveRate)})</span>}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        {totalAllocated > totalLimit && (
+                                                            <div style={{ marginTop: '12px', padding: '12px', borderRadius: '6px', backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: '0.875rem', fontWeight: '500' }}>
+                                                                ⚠️ Total allocated ({formatDocCurrency(totalAllocated, billCurr)}) cannot exceed paid + discount ({formatDocCurrency(totalLimit, billCurr)}). Please adjust.
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -1097,9 +1172,9 @@ const Payment = () => {
                 </div>
             )}
 
-            {/* ══════════════════════════════════════
+            {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
                 VIEW MODE MODAL
-            ══════════════════════════════════════ */}
+            â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
             {isViewMode && viewPayment && (
                 <div className="pp-view-modal-overlay">
                     <div className="pp-view-modal-container">
@@ -1121,7 +1196,7 @@ const Payment = () => {
                         <div className="pp-view-modal-body">
                             <div className="pp-receipt-view-container" id="payment-print-area">
 
-                                {/* ── Receipt Header: Company + Payment Title ── */}
+                                {/* â”€â”€ Receipt Header: Company + Payment Title â”€â”€ */}
                                 <div className="pp-receipt-header">
                                     <div className="pp-receipt-company-section">
                                         {companyDetails.logo && (
@@ -1165,11 +1240,11 @@ const Payment = () => {
 
                                 <div className="PurchasePayment-divider" style={{ margin: '20px 0', borderTop: '1px solid #e2e8f0' }}></div>
 
-                                {/* ── Vendor + Payment Summary ── */}
+                                {/* â”€â”€ Vendor + Payment Summary â”€â”€ */}
                                 <div className="pp-receipt-addresses">
                                     <div className="pp-receipt-bill-to">
                                         <h3 className="pp-receipt-section-title">{getReceiptPaymentLabel('receivedFrom', 'RECEIVED FROM:')}</h3>
-                                        <p className="pp-receipt-vendor-name">{viewPayment.vendor?.name || '—'}</p>
+                                        <p className="pp-receipt-vendor-name">{viewPayment.vendor?.name || 'â€”'}</p>
                                         {viewPayment.vendor?.city && <p className="pp-receipt-vendor-address">{viewPayment.vendor.city}</p>}
                                         {[viewPayment.vendor?.city, viewPayment.vendor?.state].filter(Boolean).length > 0 && (
                                             <p className="pp-receipt-vendor-city">
@@ -1201,18 +1276,43 @@ const Payment = () => {
                                     </div>
                                 </div>
 
-                                {/* ── Satisfaction Banner ── */}
+                                {/* â”€â”€ Satisfaction Banner â”€â”€ */}
+                                {/* -- Satisfaction Banner -- */}
                                 <div className="pp-receipt-satisfaction-banner">
                                     <p className="pp-receipt-satisfaction-text">
-                                        {getReceiptPaymentLabel('satisfaction', 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.')
-                                            .replace('{amount}', formatCurrency(viewPayment.amount))
-                                            .replace('{discountText}', viewPayment.discountAmount > 0 ? `(with ${formatCurrency(viewPayment.discountAmount)} discount received)` : '')
-                                        }
+                                        {(() => {
+                                            const billCurr = viewPayment.purchasebill?.currency || (viewPayment.allocations && viewPayment.allocations[0]?.purchasebill?.currency) || companySettings?.currency || 'INR';
+                                            const liveRate = getSyncRate(billCurr, companySettings?.currency || 'INR') || 1.0;
+                                            const isForeign = billCurr !== (companySettings?.currency || 'INR');
+                                            const amtStr = isForeign
+                                                ? `${formatDocCurrency(viewPayment.amount, billCurr)} (${formatCurrency(viewPayment.amount * liveRate)})`
+                                                : formatCurrency(viewPayment.amount);
+                                            const discStr = viewPayment.discountAmount > 0
+                                                ? (isForeign
+                                                    ? `(with ${formatDocCurrency(viewPayment.discountAmount, billCurr)} (${formatCurrency(viewPayment.discountAmount * liveRate)}) discount received)`
+                                                    : `(with ${formatCurrency(viewPayment.discountAmount)} discount received)`)
+                                                : '';
+                                            return getReceiptPaymentLabel('satisfaction', 'The sum of {amount} {discountText} was received in full satisfaction of the mentioned account.')
+                                                .replace('{amount}', amtStr)
+                                                .replace('{discountText}', discStr);
+                                        })()}
                                     </p>
-                                    <span className="pp-receipt-satisfaction-amount">{formatCurrency(viewPayment.amount)}</span>
+                                    <span className="pp-receipt-satisfaction-amount">
+                                        {(() => {
+                                            const billCurr = viewPayment.purchasebill?.currency || (viewPayment.allocations && viewPayment.allocations[0]?.purchasebill?.currency) || companySettings?.currency || 'INR';
+                                            const liveRate = getSyncRate(billCurr, companySettings?.currency || 'INR') || 1.0;
+                                            const isForeign = billCurr !== (companySettings?.currency || 'INR');
+                                            return isForeign ? (
+                                                <>
+                                                    <div>{formatDocCurrency(viewPayment.amount, billCurr)}</div>
+                                                    <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency(viewPayment.amount * liveRate)})</div>
+                                                </>
+                                            ) : formatCurrency(viewPayment.amount);
+                                        })()}
+                                    </span>
                                 </div>
 
-                                {/* ── Applied To Bill Section ── */}
+                                {/* â”€â”€ Applied To Bill Section â”€â”€ */}
                                 {((viewPayment.allocations && viewPayment.allocations.length > 0) || viewPayment.purchasebill) && (
                                     <div className="pp-receipt-applied-section">
                                         <h3 className="pp-receipt-section-title">APPLIED TO BILLS:</h3>
@@ -1228,34 +1328,95 @@ const Payment = () => {
                                             </thead>
                                             <tbody>
                                                 {viewPayment.allocations && viewPayment.allocations.length > 0 ? (
-                                                    viewPayment.allocations.map((alloc, index) => (
-                                                        <tr key={alloc.id}>
-                                                            <td>{alloc.purchasebill?.billNumber || `ID: ${alloc.purchaseBillId}`}</td>
-                                                            <td>
-                                                                {alloc.purchasebill?.date
-                                                                    ? new Date(alloc.purchasebill.date).toLocaleDateString()
-                                                                    : '—'
-                                                                }
-                                                            </td>
-                                                            <td>{formatCurrency(alloc.purchasebill?.totalAmount || 0)}</td>
-                                                            <td>{formatCurrency(parseFloat(alloc.amount || 0) + (index === 0 ? parseFloat(viewPayment.discountAmount || 0) : 0))}</td>
-                                                            <td style={{ textAlign: 'right' }}>{formatCurrency(alloc.purchasebill?.balanceAmount || 0)}</td>
-                                                        </tr>
-                                                    ))
+                                                    viewPayment.allocations.map((alloc, index) => {
+                                                        const billCurr = alloc.purchasebill?.currency || companySettings?.currency || 'INR';
+                                                        const liveRate = getSyncRate(billCurr, companySettings?.currency || 'INR') || 1.0;
+                                                        const isForeign = billCurr !== (companySettings?.currency || 'INR');
+                                                        const billTotal = alloc.purchasebill?.totalAmount || 0;
+                                                        const allocAmt = parseFloat(alloc.amount || 0) + (index === 0 ? parseFloat(viewPayment.discountAmount || 0) : 0);
+                                                        const billBal = alloc.purchasebill?.balanceAmount || 0;
+                                                        return (
+                                                            <tr key={alloc.id}>
+                                                                <td>{alloc.purchasebill?.billNumber || `ID: ${alloc.purchaseBillId}`}</td>
+                                                                <td>
+                                                                    {alloc.purchasebill?.date
+                                                                        ? new Date(alloc.purchasebill.date).toLocaleDateString()
+                                                                        : 'â€”'
+                                                                    }
+                                                                </td>
+                                                                <td>
+                                                                    {isForeign ? (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(billTotal, billCurr)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(billTotal * liveRate)})</div>
+                                                                        </>
+                                                                    ) : formatCurrency(billTotal)}
+                                                                </td>
+                                                                <td>
+                                                                    {isForeign ? (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(allocAmt, billCurr)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(allocAmt * liveRate)})</div>
+                                                                        </>
+                                                                    ) : formatCurrency(allocAmt)}
+                                                                </td>
+                                                                <td style={{ textAlign: 'right' }}>
+                                                                    {isForeign ? (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(billBal, billCurr)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(billBal * liveRate)})</div>
+                                                                        </>
+                                                                    ) : formatCurrency(billBal)}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
                                                 ) : (
                                                     // Fallback to legacy single bill link
-                                                    <tr>
-                                                        <td>{viewPayment.purchasebill?.billNumber || '—'}</td>
-                                                        <td>
-                                                            {viewPayment.purchasebill?.date
-                                                                ? new Date(viewPayment.purchasebill.date).toLocaleDateString()
-                                                                : '—'
-                                                            }
-                                                        </td>
-                                                        <td>{formatCurrency(viewPayment.purchasebill?.totalAmount || (parseFloat(viewPayment.amount || 0) + parseFloat(viewPayment.discountAmount || 0)))}</td>
-                                                        <td>{formatCurrency(parseFloat(viewPayment.amount || 0) + parseFloat(viewPayment.discountAmount || 0))}</td>
-                                                        <td style={{ textAlign: 'right' }}>{formatCurrency(viewPayment.purchasebill?.balanceAmount || 0)}</td>
-                                                    </tr>
+                                                    // Fallback to legacy single bill link
+                                                    (() => {
+                                                        const billCurr = viewPayment.purchasebill?.currency || companySettings?.currency || 'INR';
+                                                        const liveRate = getSyncRate(billCurr, companySettings?.currency || 'INR') || 1.0;
+                                                        const isForeign = billCurr !== (companySettings?.currency || 'INR');
+                                                        const billTotal = viewPayment.purchasebill?.totalAmount || (parseFloat(viewPayment.amount || 0) + parseFloat(viewPayment.discountAmount || 0));
+                                                        const allocAmt = parseFloat(viewPayment.amount || 0) + parseFloat(viewPayment.discountAmount || 0);
+                                                        const billBal = viewPayment.purchasebill?.balanceAmount || 0;
+                                                        return (
+                                                            <tr>
+                                                                <td>{viewPayment.purchasebill?.billNumber || 'â€”'}</td>
+                                                                <td>
+                                                                    {viewPayment.purchasebill?.date
+                                                                        ? new Date(viewPayment.purchasebill.date).toLocaleDateString()
+                                                                        : 'â€”'
+                                                                    }
+                                                                </td>
+                                                                <td>
+                                                                    {isForeign ? (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(billTotal, billCurr)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(billTotal * liveRate)})</div>
+                                                                        </>
+                                                                    ) : formatCurrency(billTotal)}
+                                                                </td>
+                                                                <td>
+                                                                    {isForeign ? (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(allocAmt, billCurr)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(allocAmt * liveRate)})</div>
+                                                                        </>
+                                                                    ) : formatCurrency(allocAmt)}
+                                                                </td>
+                                                                <td style={{ textAlign: 'right' }}>
+                                                                    {isForeign ? (
+                                                                        <>
+                                                                            <div>{formatDocCurrency(billBal, billCurr)}</div>
+                                                                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(billBal * liveRate)})</div>
+                                                                        </>
+                                                                    ) : formatCurrency(billBal)}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })()
                                                 )}
                                             </tbody>
                                         </table>
@@ -1289,7 +1450,7 @@ const Payment = () => {
                                     );
                                 })()}
 
-                                {/* ── Footer Section with Remarks and Signature ── */}
+                                {/* â”€â”€ Footer Section with Remarks and Signature â”€â”€ */}
                                 <div className="pp-receipt-footer-details">
                                     <div className="pp-receipt-remarks-title">{getReceiptPaymentLabel('notes', 'Remarks / Notes:')}</div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1309,7 +1470,7 @@ const Payment = () => {
                 </div>
             )}
 
-            {/* ── Delete Confirmation ── */}
+            {/* â”€â”€ Delete Confirmation â”€â”€ */}
             {showDeleteConfirm && (
                 <div className="PurchasePayment-delete-modal-overlay">
                     <div className="PurchasePayment-delete-box">

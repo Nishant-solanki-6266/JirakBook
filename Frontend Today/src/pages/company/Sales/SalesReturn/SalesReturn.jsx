@@ -22,7 +22,26 @@ import { CompanyContext } from '../../../../context/CompanyContext';
 
 const SalesReturn = () => {
     // --- State Management ---
-    const { companySettings, formatCurrency, getDocumentTitle } = useContext(CompanyContext);
+    const { companySettings, formatCurrency, getDocumentTitle, getSyncRate } = useContext(CompanyContext);
+    const formatDocCurrency = (amount, currencyCode) => {
+        const docCurrency = currencyCode || companySettings?.currency || 'USD';
+        const localeMap = {
+            'INR': 'en-IN', 'AED': 'ar-AE', 'SAR': 'ar-SA', 'EUR': 'de-DE', 'GBP': 'en-GB',
+            'JPY': 'ja-JP', 'CNY': 'zh-CN', 'RUB': 'ru-RU', 'BRL': 'pt-BR', 'CAD': 'en-CA',
+            'AUD': 'en-AU', 'PKR': 'en-PK', 'BDT': 'en-BD'
+        };
+        const locale = localeMap[docCurrency] || 'en-US';
+        try {
+            return new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency: docCurrency,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount || 0);
+        } catch (e) {
+            return `${docCurrency} ${(amount || 0).toFixed(2)}`;
+        }
+    };
     const { hasPermission } = useContext(AuthContext);
     const [customFieldValues, setCustomFieldValues] = useState({});
 
@@ -89,7 +108,16 @@ const SalesReturn = () => {
     });
 
     const totalReturns = filteredReturns.length;
-    const totalAmount = filteredReturns.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+    const totalAmount = filteredReturns.reduce((sum, r) => {
+        const baseCurr = companySettings?.currency || 'INR';
+        const invCurr = r.invoice?.currency;
+        const isForeign = invCurr && invCurr !== baseCurr;
+        if (isForeign) {
+            const liveRate = getSyncRate(invCurr, baseCurr) || 1;
+            return sum + (r.totalAmount || 0) * liveRate;
+        }
+        return sum + (r.totalAmount || 0);
+    }, 0);
     const pendingReturns = filteredReturns.filter(r => r.status === 'Pending').length;
 
     const summaryCards = [
@@ -892,7 +920,26 @@ const SalesReturn = () => {
                                         <td>{warehouseName}</td>
                                         <td>{new Date(row.date).toLocaleDateString()}</td>
                                         <td className="SalesReturn-text-center">{(row.salesreturnitem || row.items || []).length}</td>
-                                        <td className="SalesReturn-fw-700">{formatCurrency(row.totalAmount || 0)}</td>
+                                        <td className="SalesReturn-fw-700">
+                                            {(() => {
+                                                const invCurr = row.invoice?.currency;
+                                                const baseCurr = companySettings?.currency || 'INR';
+                                                const isForeign = invCurr && invCurr !== baseCurr;
+                                                if (isForeign) {
+                                                    // totalAmount is stored in document currency (e.g. EUR)
+                                                    // multiply by live rate to get base currency (INR)
+                                                    const liveRate = getSyncRate(invCurr, baseCurr) || 1;
+                                                    const baseAmt = (row.totalAmount || 0) * liveRate;
+                                                    return (
+                                                        <>
+                                                            <div>{formatDocCurrency(row.totalAmount || 0, invCurr)}</div>
+                                                            <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency(baseAmt)})</div>
+                                                        </>
+                                                    );
+                                                }
+                                                return formatCurrency(row.totalAmount || 0);
+                                            })()}
+                                        </td>
                                         <td>Sales Return</td>
                                         <td><span className="SalesReturn-reason-text">{row.reason || '-'}</span></td>
                                         <td className="SalesReturn-text-right">
@@ -981,7 +1028,15 @@ const SalesReturn = () => {
                                         {filteredInvoices.map(inv => (
                                             <option key={`${inv.invoiceType}-${inv.id}`} value={inv.id}>
                                                 [{inv.invoiceType === 'POS_INVOICE' ? 'POS' : 'INV'}] {inv.invoiceNumber} {inv.date ? `(${new Date(inv.date).toLocaleDateString()})` : ''}
-                                                {inv.totalAmount ? ` - ${formatCurrency(inv.totalAmount)}` : ''}
+                                                {(() => {
+                                                    if (!inv.totalAmount) return '';
+                                                    const isForeign = inv.currency && inv.currency !== (companySettings?.currency || 'INR');
+                                                    if (isForeign) {
+                                                        const docAmt = inv.totalAmount / (inv.exchangeRate || 1.0);
+                                                        return ` - ${formatDocCurrency(docAmt, inv.currency)} (${formatCurrency(inv.totalAmount)})`;
+                                                    }
+                                                    return ` - ${formatCurrency(inv.totalAmount)}`;
+                                                })()}
                                             </option>
                                         ))}
                                     </select>
@@ -1073,11 +1128,21 @@ const SalesReturn = () => {
                                                                 setFormData({ ...formData, items: newItems });
                                                             }}>
                                                             <option value="">Select Product...</option>
-                                                            {availableProducts.map(p => (
-                                                                <option key={p.id} value={String(p.id)}>
-                                                                    {p.name} ({p.totalQuantity ?? 0}) {p.salePrice ? `(${formatCurrency(p.salePrice)})` : ''}
-                                                                </option>
-                                                            ))}
+                                                            {availableProducts.map(p => {
+                                                                const invCurr = selectedInvoiceDetails?.currency || companySettings?.currency || 'INR';
+                                                                const isForeign = invCurr !== (companySettings?.currency || 'INR');
+                                                                const rate = getSyncRate(invCurr, companySettings?.currency || 'INR') || 1.0;
+                                                                const priceStr = p.salePrice ? (
+                                                                    isForeign 
+                                                                        ? `(${formatDocCurrency(p.salePrice / rate, invCurr)} / ${formatCurrency(p.salePrice)})`
+                                                                        : `(${formatCurrency(p.salePrice)})`
+                                                                ) : '';
+                                                                return (
+                                                                    <option key={p.id} value={String(p.id)}>
+                                                                        {p.name}
+                                                                    </option>
+                                                                );
+                                                            })}
                                                         </select>
                                                         {product && (
                                                             <div className="SalesReturn-product-info-display" style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', lineHeight: '1.3' }}>
@@ -1144,7 +1209,19 @@ const SalesReturn = () => {
                                                         }}
                                                     />
                                                     <div className="SalesReturn-item-amount">
-                                                        {formatCurrency(calculatedAmount)}
+                                                        {(() => {
+                                                            const invCurr = selectedInvoiceDetails?.currency || companySettings?.currency || 'INR';
+                                                            const invRate = getSyncRate(invCurr, companySettings?.currency || 'INR') || 1.0;
+                                                            const isInvForeign = invCurr !== (companySettings?.currency || 'INR');
+                                                            return isInvForeign ? (
+                                                                <>
+                                                                    <div style={{ fontWeight: '600' }}>{formatDocCurrency(calculatedAmount, invCurr)}</div>
+                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(calculatedAmount * invRate)})</div>
+                                                                </>
+                                                            ) : (
+                                                                formatCurrency(calculatedAmount)
+                                                            );
+                                                        })()}
                                                     </div>
                                                     <button className="SalesReturn-btn-remove-item" onClick={() => removeItem(item.id)}>
                                                         <Trash2 size={16} />
@@ -1291,7 +1368,15 @@ const SalesReturn = () => {
                                         {filteredInvoices.map(inv => (
                                             <option key={inv.id} value={inv.id}>
                                                 {inv.invoiceNumber} {inv.date ? `(${new Date(inv.date).toLocaleDateString()})` : ''}
-                                                {inv.totalAmount ? ` - ${formatCurrency(inv.totalAmount)}` : ''}
+                                                {(() => {
+                                                    if (!inv.totalAmount) return '';
+                                                    const isForeign = inv.currency && inv.currency !== (companySettings?.currency || 'INR');
+                                                    if (isForeign) {
+                                                        const docAmt = inv.totalAmount / (inv.exchangeRate || 1.0);
+                                                        return ` - ${formatDocCurrency(docAmt, inv.currency)} (${formatCurrency(inv.totalAmount)})`;
+                                                    }
+                                                    return ` - ${formatCurrency(inv.totalAmount)}`;
+                                                })()}
                                             </option>
                                         ))}
                                     </select>
@@ -1386,11 +1471,21 @@ const SalesReturn = () => {
                                                                 setFormData({ ...formData, items: newItems });
                                                             }}>
                                                             <option value="">Select Product...</option>
-                                                            {availableProducts.map(p => (
-                                                                <option key={p.id} value={String(p.id)}>
-                                                                    {p.name} ({p.totalQuantity ?? 0}) {p.salePrice ? `(${formatCurrency(p.salePrice)})` : ''}
-                                                                </option>
-                                                            ))}
+                                                            {availableProducts.map(p => {
+                                                                const invCurr = selectedInvoiceDetails?.currency || companySettings?.currency || 'INR';
+                                                                const isForeign = invCurr !== (companySettings?.currency || 'INR');
+                                                                const rate = getSyncRate(invCurr, companySettings?.currency || 'INR') || 1.0;
+                                                                const priceStr = p.salePrice ? (
+                                                                    isForeign 
+                                                                        ? `(${formatDocCurrency(p.salePrice / rate, invCurr)} / ${formatCurrency(p.salePrice)})`
+                                                                        : `(${formatCurrency(p.salePrice)})`
+                                                                ) : '';
+                                                                return (
+                                                                    <option key={p.id} value={String(p.id)}>
+                                                                        {p.name} ({p.totalQuantity ?? 0}) {priceStr}
+                                                                    </option>
+                                                                );
+                                                            })}
                                                         </select>
                                                         {product && (
                                                             <div className="SalesReturn-product-info-display" style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', lineHeight: '1.3' }}>
@@ -1400,7 +1495,7 @@ const SalesReturn = () => {
                                                         )}
                                                     </div>
                                                     <select
-                                                        className="SalesReturn-form-input item -wh"
+                                                        className="SalesReturn-form-input SalesReturn-item-wh"
                                                         value={String(item.warehouseId || '')}
                                                         onChange={(e) => {
                                                             const newItems = [...formData.items];
@@ -1418,7 +1513,7 @@ const SalesReturn = () => {
                                                         type="number"
                                                         placeholder="Qty"
                                                         value={item.qty}
-                                                        className="SalesReturn-form-input item -qty"
+                                                        className="SalesReturn-form-input SalesReturn-item-qty"
                                                         min="0"
                                                         step="0.01"
                                                         onChange={(e) => {
@@ -1432,7 +1527,7 @@ const SalesReturn = () => {
                                                         type="number"
                                                         placeholder="Rate"
                                                         value={item.rate}
-                                                        className="SalesReturn-form-input item -rate"
+                                                        className="SalesReturn-form-input SalesReturn-item-rate"
                                                         min="0"
                                                         step="0.01"
                                                         onChange={(e) => {
@@ -1446,7 +1541,7 @@ const SalesReturn = () => {
                                                         type="number"
                                                         placeholder="Tax %"
                                                         value={item.tax}
-                                                        className="SalesReturn-form-input item -tax"
+                                                        className="SalesReturn-form-input SalesReturn-item-tax"
                                                         min="0"
                                                         step="0.01"
                                                         onChange={(e) => {
@@ -1456,8 +1551,20 @@ const SalesReturn = () => {
                                                             setFormData({ ...formData, items: newItems });
                                                         }}
                                                     />
-                                                    <div className="item -amount">
-                                                        {formatCurrency(calculatedAmount)}
+                                                    <div className="SalesReturn-item-amount">
+                                                        {(() => {
+                                                            const invCurr = selectedInvoiceDetails?.currency || companySettings?.currency || 'INR';
+                                                            const invRate = getSyncRate(invCurr, companySettings?.currency || 'INR') || 1.0;
+                                                            const isInvForeign = invCurr !== (companySettings?.currency || 'INR');
+                                                            return isInvForeign ? (
+                                                                <>
+                                                                    <div style={{ fontWeight: '600' }}>{formatDocCurrency(calculatedAmount, invCurr)}</div>
+                                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency(calculatedAmount * invRate)})</div>
+                                                                </>
+                                                            ) : (
+                                                                formatCurrency(calculatedAmount)
+                                                            );
+                                                        })()}
                                                     </div>
                                                     <button className="SalesReturn-btn-remove-item" onClick={() => removeItem(item.id)}>
                                                         <Trash2 size={16} />
@@ -1642,15 +1749,57 @@ const SalesReturn = () => {
                                                     <td><strong>{item.product?.name || '—'}</strong></td>
                                                     <td>{item.warehouse?.name || '—'}</td>
                                                     <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                                                    <td style={{ textAlign: 'right' }}>{formatCurrency(item.rate || 0)}</td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(item.amount || 0)}</td>
+                                                    <td style={{ textAlign: 'right' }}>
+                                                        {selectedReturn.invoice?.currency && selectedReturn.invoice?.currency !== (companySettings?.currency || 'INR') ? (
+                                                            (() => {
+                                                                const liveRate = getSyncRate(selectedReturn.invoice.currency, companySettings?.currency || 'INR') || 1;
+                                                                return (
+                                                                    <>
+                                                                        <div>{formatDocCurrency(item.rate || 0, selectedReturn.invoice.currency)}</div>
+                                                                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>({formatCurrency((item.rate || 0) * liveRate)})</div>
+                                                                    </>
+                                                                );
+                                                            })()
+                                                        ) : (
+                                                            formatCurrency(item.rate || 0)
+                                                        )}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                                        {selectedReturn.invoice?.currency && selectedReturn.invoice?.currency !== (companySettings?.currency || 'INR') ? (
+                                                            (() => {
+                                                                const liveRate = getSyncRate(selectedReturn.invoice.currency, companySettings?.currency || 'INR') || 1;
+                                                                return (
+                                                                    <>
+                                                                        <div>{formatDocCurrency(item.amount || 0, selectedReturn.invoice.currency)}</div>
+                                                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((item.amount || 0) * liveRate)})</div>
+                                                                    </>
+                                                                );
+                                                            })()
+                                                        ) : (
+                                                            formatCurrency(item.amount || 0)
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                         <tfoot>
                                             <tr className="SalesReturn-receipt-total-row">
                                                 <td colSpan={5} style={{ textAlign: 'right', fontWeight: 700, paddingRight: '1rem' }}>TOTAL AMOUNT</td>
-                                                <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '1.1rem', color: '#ef4444' }}>{formatCurrency(selectedReturn.totalAmount || 0)}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '1.1rem', color: '#ef4444' }}>
+                                                    {selectedReturn.invoice?.currency && selectedReturn.invoice?.currency !== (companySettings?.currency || 'INR') ? (
+                                                        (() => {
+                                                            const liveRate = getSyncRate(selectedReturn.invoice.currency, companySettings?.currency || 'INR') || 1;
+                                                            return (
+                                                                <>
+                                                                    <div>{formatDocCurrency(selectedReturn.totalAmount || 0, selectedReturn.invoice.currency)}</div>
+                                                                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 'normal' }}>({formatCurrency((selectedReturn.totalAmount || 0) * liveRate)})</div>
+                                                                </>
+                                                            );
+                                                        })()
+                                                    ) : (
+                                                        formatCurrency(selectedReturn.totalAmount || 0)
+                                                    )}
+                                                </td>
                                             </tr>
                                         </tfoot>
                                     </table>

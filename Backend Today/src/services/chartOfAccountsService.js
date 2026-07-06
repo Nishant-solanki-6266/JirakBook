@@ -10,7 +10,7 @@ const calculateInventoryValue = async (companyId) => {
 
         let totalValue = 0;
         stocks.forEach(s => {
-            const price = s.product.purchasePrice || s.product.initialCost || 0;
+            const price = s.product.averageCost || s.product.purchasePrice || s.product.initialCost || 0;
             totalValue += (s.quantity * price);
         });
         return totalValue;
@@ -181,7 +181,7 @@ const calculateDynamicLedgerBalances = async (companyId, inventoryValue) => {
 
             let dynamicBalance;
             if (isInventory) {
-                dynamicBalance = inventoryValue * rate;
+                dynamicBalance = inventoryValue; // already in base currency (INR) — no conversion needed
             } else if (isOBE || isRetainedEarnings) {
                 dynamicBalance = 0; // Will be set after totals
             } else if (['ASSETS', 'EXPENSES'].includes(groupType)) {
